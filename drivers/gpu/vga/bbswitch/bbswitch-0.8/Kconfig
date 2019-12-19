@@ -1,0 +1,7 @@
+config VGA_BBSWITCH
+	bool "bbswitch - GPU switching support (NVIDIA)"
+	depends on X86
+	depends on ACPI
+	depends on PCI
+	depends on VGA_SWITCHEROO
+	select VGA_ARB
