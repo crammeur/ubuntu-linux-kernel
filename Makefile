@@ -2,8 +2,8 @@
 VERSION = 5
 PATCHLEVEL = 0
 SUBLEVEL = 0
-EXTRAVERSION = -rc7
-NAME = Shy Crocodile
+EXTRAVERSION = -rc8
+NAME = Marc-Antoine Bergeron
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"

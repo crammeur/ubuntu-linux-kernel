@@ -29,3 +29,5 @@ config VGA_SWITCHEROO
           X isn't running and delayed switching until the next logoff. This
 	  feature is called hybrid graphics, ATI PowerXpress, and Nvidia
 	  HybridPower.
+
+source "drivers/gpu/vga/bbswitch/Kconfig"

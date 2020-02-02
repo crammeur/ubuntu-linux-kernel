@@ -231,7 +231,16 @@ source "drivers/gpu/drm/amd/amdgpu/Kconfig"
 
 source "drivers/gpu/drm/amd/lib/Kconfig"
 
-source "drivers/gpu/drm/nouveau/Kconfig"
+config DRM_NVIDIA_CARD
+	tristate "NVIDIA Card"
+	depends on DRM && PCI && MMU
+
+choice
+	prompt "NVIDIA Driver"
+	depends on DRM_NVIDIA_CARD
+	source "drivers/gpu/drm/nouveau/Kconfig"
+	source "drivers/gpu/drm/nvidia/Kconfig"
+endchoice
 
 source "drivers/gpu/drm/i915/Kconfig"
 
@@ -419,3 +428,4 @@ config DRM_PANEL_ORIENTATION_QUIRKS
 config DRM_LIB_RANDOM
 	bool
 	default n
+
