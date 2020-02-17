@@ -1,14 +1,3 @@
-/**
- * Disable discrete graphics (currently nvidia only)
- *
- * Usage:
- * Disable discrete card
- * # echo OFF > /proc/acpi/bbswitch
- * Enable discrete card
- * # echo ON > /proc/acpi/bbswitch
- * Get status
- * # cat /proc/acpi/bbswitch
- */
 /*
  *  Copyright (C) 2011-2013 Bumblebee Project
  *  Author: Peter Wu <lekensteyn@gmail.com>
@@ -35,19 +24,14 @@
 #include <linux/suspend.h>
 #include <linux/seq_file.h>
 #include <linux/pm_runtime.h>
+#include "bbswitch.h"
 
-#define BBSWITCH_VERSION "0.8"
+#define BBSWITCH_VERSION "0.8.1"
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Toggle the discrete graphics card");
-MODULE_AUTHOR("Peter Wu <lekensteyn@gmail.com>");
+MODULE_AUTHOR("Marc-Antoine Bergeron <bergeron.marcantoine.cem@gmail.com>");
 MODULE_VERSION(BBSWITCH_VERSION);
-
-enum {
-    CARD_UNCHANGED = -1,
-    CARD_OFF = 0,
-    CARD_ON = 1,
-};
 
 static int load_state = CARD_UNCHANGED;
 MODULE_PARM_DESC(load_state, "Initial card state (0 = off, 1 = on, -1 = unchanged)");
@@ -61,25 +45,6 @@ module_param(skip_optimus_dsm, bool, 0400);
 
 extern struct proc_dir_entry *acpi_root_dir;
 
-static const char acpi_optimus_dsm_muid[16] = {
-    0xF8, 0xD8, 0x86, 0xA4, 0xDA, 0x0B, 0x1B, 0x47,
-    0xA7, 0x2B, 0x60, 0x42, 0xA6, 0xB5, 0xBE, 0xE0,
-};
-
-static const char acpi_nvidia_dsm_muid[16] = {
-    0xA0, 0xA0, 0x95, 0x9D, 0x60, 0x00, 0x48, 0x4D,
-    0xB3, 0x4D, 0x7E, 0x5F, 0xEA, 0x12, 0x9F, 0xD4
-};
-
-/*
-The next UUID has been found as well in
-https://bugs.launchpad.net/lpbugreporter/+bug/752542:
-
-0xD3, 0x73, 0xD8, 0x7E, 0xD0, 0xC2, 0x4F, 0x4E,
-0xA8, 0x54, 0x0F, 0x13, 0x17, 0xB0, 0x1C, 0x2C 
-It looks like something for Intel GPU:
-http://lxr.linux.no/#linux+v3.1.5/drivers/gpu/drm/i915/intel_acpi.c
- */
 
 #define DSM_TYPE_UNSUPPORTED    0
 #define DSM_TYPE_OPTIMUS        1

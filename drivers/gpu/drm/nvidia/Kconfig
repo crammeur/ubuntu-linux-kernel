@@ -5,6 +5,8 @@ config DRM_NVIDIA
         select FW_LOADER
 	select DRM_KMS_HELPER
 	select DRM_TTM
+	select BACKLIGHT_CLASS_DEVICE if DRM_NVIDIA_BACKLIGHT
+	select BACKLIGHT_LCD_SUPPORT if DRM_NVIDIA_BACKLIGHT
 	select ACPI_VIDEO if ACPI && X86 && BACKLIGHT_CLASS_DEVICE && INPUT
 	select X86_PLATFORM_DEVICES if ACPI && X86
 	select ACPI_WMI if ACPI && X86
@@ -19,3 +21,11 @@ config DRM_NVIDIA
 	select DRM_VM
 	help
 	  Choose this option for NVIDIA support.
+
+config DRM_NVIDIA_BACKLIGHT
+	bool "Support for backlight control"
+	depends on DRM_NVIDIA
+	default y
+	help
+	  Say Y here if you want to control the backlight of your display
+	  (e.g. a laptop panel).9
