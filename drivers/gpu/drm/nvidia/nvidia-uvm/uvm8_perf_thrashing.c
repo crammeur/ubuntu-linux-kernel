@@ -416,10 +416,15 @@ static int nv_procfs_read_thrashing_stats(struct seq_file *s, void *v)
 
     UVM_ASSERT(processor_stats);
 
+    if (!uvm_down_read_trylock(&g_uvm_global.pm.lock))
+            return -EAGAIN;
+
     UVM_SEQ_OR_DBG_PRINT(s, "thrashing     %llu\n", (NvU64)atomic64_read(&processor_stats->num_thrashing));
     UVM_SEQ_OR_DBG_PRINT(s, "throttle      %llu\n", (NvU64)atomic64_read(&processor_stats->num_throttle));
     UVM_SEQ_OR_DBG_PRINT(s, "pin_local     %llu\n", (NvU64)atomic64_read(&processor_stats->num_pin_local));
     UVM_SEQ_OR_DBG_PRINT(s, "pin_remote    %llu\n", (NvU64)atomic64_read(&processor_stats->num_pin_remote));
+
+    uvm_up_read(&g_uvm_global.pm.lock);
 
     return 0;
 }
@@ -634,7 +639,7 @@ static block_thrashing_info_t *thrashing_info_get_create(uvm_va_block_t *va_bloc
     BUILD_BUG_ON((1 << 16) < UVM_ID_MAX_PROCESSORS);
 
     if (!block_thrashing) {
-        block_thrashing = kmem_cache_zalloc(g_va_block_thrashing_info_cache, NV_UVM_GFP_FLAGS);
+        block_thrashing = nv_kmem_cache_zalloc(g_va_block_thrashing_info_cache, NV_UVM_GFP_FLAGS);
         if (!block_thrashing)
             goto done;
 
@@ -904,7 +909,7 @@ static NV_STATUS thrashing_pin_page(va_space_thrashing_info_t *va_space_thrashin
 
     if (!page_thrashing->pinned) {
         if (va_space_thrashing->params.pin_ns > 0) {
-            pinned_page_t *pinned_page = kmem_cache_zalloc(g_pinned_page_cache, NV_UVM_GFP_FLAGS);
+            pinned_page_t *pinned_page = nv_kmem_cache_zalloc(g_pinned_page_cache, NV_UVM_GFP_FLAGS);
             if (!pinned_page)
                 return NV_ERR_NO_MEMORY;
 
@@ -1827,10 +1832,13 @@ static void thrashing_unpin_pages(struct work_struct *work)
 {
     struct delayed_work *dwork = to_delayed_work(work);
     va_space_thrashing_info_t *va_space_thrashing = container_of(dwork, va_space_thrashing_info_t, pinned_pages.dwork);
+    uvm_va_space_t *va_space = va_space_thrashing->va_space;
+
+    UVM_ASSERT(uvm_va_space_initialized(va_space) == NV_OK);
 
     // Take the VA space lock so that VA blocks don't go away during this
     // operation.
-    uvm_va_space_down_read(va_space_thrashing->va_space);
+    uvm_va_space_down_read(va_space);
 
     if (va_space_thrashing->pinned_pages.in_va_space_teardown)
         goto exit_no_list_lock;
@@ -1897,7 +1905,7 @@ static void thrashing_unpin_pages(struct work_struct *work)
     }
 
 exit_no_list_lock:
-    uvm_va_space_up_read(va_space_thrashing->va_space);
+    uvm_va_space_up_read(va_space);
 }
 
 static void thrashing_unpin_pages_entry(struct work_struct *work)

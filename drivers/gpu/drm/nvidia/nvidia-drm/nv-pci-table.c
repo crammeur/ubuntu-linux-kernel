@@ -30,14 +30,6 @@ struct pci_device_id nv_pci_table[] = {
         .class       = (PCI_CLASS_DISPLAY_3D << 8),
         .class_mask  = ~0
     },
-    {
-        .vendor      = PCI_VENDOR_ID_NVIDIA,
-        .device      = 0x0e00,
-        .subvendor   = PCI_ANY_ID,
-        .subdevice   = PCI_ANY_ID,
-        .class       = (PCI_CLASS_MULTIMEDIA_OTHER << 8),
-        .class_mask  = ~0
-    },
     { }
 };
 

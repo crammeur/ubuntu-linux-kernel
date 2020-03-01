@@ -20,14 +20,6 @@ typedef struct {
     } pci_info;
 
     /*
-     * TODO remove os_dev_ptr after the change that added os_device_ptr
-     * propagates to dev_a, Bug 200517921.
-     * opaque OS-specific pointer; on Linux, this is a pointer to the
-     * 'struct pci_dev' for the GPU.
-     */
-    void *os_dev_ptr;
-
-    /*
      * opaque OS-specific pointer; on Linux, this is a pointer to the
      * 'struct device' for the GPU.
      */

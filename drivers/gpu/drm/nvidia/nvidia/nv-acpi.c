@@ -1605,11 +1605,10 @@ static NV_STATUS  nv_acpi_wmmx_method(
     return NV_OK;
 }
 
-NvBool NV_API_CALL nv_acpi_upstreamport_power_resource_method_present(
-    void *upstream_handle
+NvBool nv_acpi_upstreamport_power_resource_method_present(
+    struct pci_dev *pdev
 )
 {
-    struct pci_dev *pdev = upstream_handle;
     acpi_handle handle = NULL;
     struct acpi_buffer buf = { ACPI_ALLOCATE_BUFFER, NULL };
     union acpi_object *object_package, *object_reference;
@@ -1742,8 +1741,8 @@ NV_STATUS NV_API_CALL nv_acpi_dod_method(
     return NV_ERR_NOT_SUPPORTED;
 }
 
-NvBool NV_API_CALL nv_acpi_upstreamport_power_resource_method_present(
-    void *upstream_handle
+NvBool nv_acpi_upstreamport_power_resource_method_present(
+    struct pci_dev *pdev
 )
 {
     return NV_FALSE;

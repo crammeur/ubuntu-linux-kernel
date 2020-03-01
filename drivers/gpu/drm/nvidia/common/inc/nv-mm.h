@@ -25,7 +25,7 @@
 
 #include "conftest.h"
 
-#ifndef NV_VMF_INSERT_PFN_PRESENT
+#if !defined(NV_VM_FAULT_T_IS_PRESENT)
 typedef int vm_fault_t;
 #endif
 

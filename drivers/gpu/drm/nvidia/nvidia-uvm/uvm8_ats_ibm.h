@@ -39,33 +39,7 @@
     #define UVM_KERNEL_SUPPORTS_IBM_ATS() 0
 #endif
 
-// TODO: Bug 2103667: NV_PNV_NPU2_INIT_CONTEXT_PRESENT is used here instead of
-//       UVM_KERNEL_SUPPORTS_IBM_ATS() during the transition from ATS
-//       development to ATS production, since development can still enable ATS
-//       without the final kernel patches in place. After ATS development
-//       stabilizes and systems have been upgraded, this should switch to
-//       UVM_KERNEL_SUPPORTS_IBM_ATS().
-#if defined(NV_PNV_NPU2_INIT_CONTEXT_PRESENT)
-    void uvm_ats_ibm_init(void);
-    void uvm_ats_ibm_exit(void);
-
-    // Creates or retains a uvm_ats_ibm_mm_t for current->mm. This prevents the
-    // uvm_ats_ibm_mm_t from being freed, but it does not prevent the mm from
-    // being freed. The caller is expected to call
-    // uvm_ats_ibm_register_gpu_va_space to retain the mm.
-    NV_STATUS uvm_ats_ibm_mm_retain(uvm_ats_ibm_mm_t **out_ats_mm);
-
-    // Like uvm_ats_ibm_mm_retain but assumes the caller already has a known-
-    // valid ats_mm. This is useful when current->mm might not be ats_mm->mm.
-    void uvm_ats_ibm_mm_retain_existing(uvm_ats_ibm_mm_t *ats_mm);
-
-    // Counterpart to uvm_ats_ibm_mm_retain. Releases count references on the
-    // ats_mm. The ats_mm may have been freed once this call returns.
-    void uvm_ats_ibm_mm_release_count(uvm_ats_ibm_mm_t *ats_mm, NvU64 count);
-
-    void uvm_ats_ibm_mm_lock(uvm_ats_ibm_mm_t *ats_mm);
-    void uvm_ats_ibm_mm_unlock(uvm_ats_ibm_mm_t *ats_mm);
-
+#if UVM_KERNEL_SUPPORTS_IBM_ATS()
     // Lock which must be held over uvm_ats_ibm_register_gpu_va_space. This
     // cannot be taken internally to that function because this lock must be
     // taken before mmap_sem and the VA space lock, so the caller must do it.
@@ -73,16 +47,15 @@
     void uvm_ats_ibm_register_unlock(uvm_va_space_t *va_space);
 
     // Enables ATS access for the gpu_va_space on current->mm.
-    // gpu_va_space->ats.ats_mm must have been retained.
     //
-    // This function also associates the VA space with the ats_mm, or increments
-    // the ref count of that association if already present. If another VA space
-    // has already been associated with current->mm, NV_ERR_NOT_SUPPORTED is
+    // This function also associates the VA space with current->mm. If another
+    // VA space has already been associated with current->mm, or another mm has
+    // already been associated with the VA space, NV_ERR_NOT_SUPPORTED is
     // returned. The association will remain until the final
     // uvm_ats_ibm_unregister_gpu_va_space call in the VA space is made.
     //
-    // LOCKING: The ats_ibm_mm lock, uvm_ats_ibm_register_lock, mmap_sem, and
-    //          the VA space lock must all be held in exclusive mode.
+    // LOCKING: uvm_ats_ibm_register_lock, mmap_sem, and the VA space lock must
+    //          all be held in exclusive mode.
     NV_STATUS uvm_ats_ibm_register_gpu_va_space(uvm_gpu_va_space_t *gpu_va_space);
 
     // Disables ATS access for the gpu_va_space. Prior to calling this function,
@@ -90,8 +63,8 @@
     // accesses in this GPU VA space, and that no ATS fault handling will be
     // attempted.
     //
-    // LOCKING: The ats_ibm_mm lock must be held. This function may take
-    //          the uvm_ats_ibm_register_lock, mmap_sem, and the VA space lock.
+    // LOCKING: This function may take the uvm_ats_ibm_register_lock, mmap_sem,
+    //          and the VA space lock.
     void uvm_ats_ibm_unregister_gpu_va_space(uvm_gpu_va_space_t *gpu_va_space);
 
     // Request the kernel to handle a fault.
@@ -102,42 +75,6 @@
                                         uvm_fault_access_type_t access_type);
 
 #else
-    static void uvm_ats_ibm_init(void)
-    {
-
-    }
-
-    static void uvm_ats_ibm_exit(void)
-    {
-
-    }
-
-    static NV_STATUS uvm_ats_ibm_mm_retain(uvm_ats_ibm_mm_t **out_ats_mm)
-    {
-        *out_ats_mm = NULL;
-        return NV_OK;
-    }
-
-    static void uvm_ats_ibm_mm_retain_existing(uvm_ats_ibm_mm_t *ats_mm)
-    {
-
-    }
-
-    static void uvm_ats_ibm_mm_release_count(uvm_ats_ibm_mm_t *ats_mm, NvU64 count)
-    {
-
-    }
-
-    static void uvm_ats_ibm_mm_lock(uvm_ats_ibm_mm_t *ats_mm)
-    {
-
-    }
-
-    static void uvm_ats_ibm_mm_unlock(uvm_ats_ibm_mm_t *ats_mm)
-    {
-
-    }
-
     static void uvm_ats_ibm_register_lock(uvm_va_space_t *va_space)
     {
 
@@ -164,11 +101,6 @@
     {
         return NV_ERR_NOT_SUPPORTED;
     }
-#endif // NV_PNV_NPU2_INIT_CONTEXT_PRESENT
-
-static void uvm_ats_ibm_mm_release(uvm_ats_ibm_mm_t *ats_mm)
-{
-    uvm_ats_ibm_mm_release_count(ats_mm, 1);
-}
+#endif // UVM_KERNEL_SUPPORTS_IBM_ATS
 
 #endif // __UVM8_ATS_IBM_H__

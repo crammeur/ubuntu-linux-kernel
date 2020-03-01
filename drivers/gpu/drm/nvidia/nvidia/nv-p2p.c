@@ -25,6 +25,8 @@ typedef struct nv_p2p_dma_mapping {
 } nv_p2p_dma_mapping_t;
 
 typedef struct nv_p2p_mem_info {
+    void (*free_callback)(void *data);
+    void *data;
     struct nvidia_p2p_page_table page_table;
     struct {
         struct list_head list_head;
@@ -162,6 +164,7 @@ static void nv_p2p_free_dma_mapping(
 
     os_mem_set(peer_nvl, 0, sizeof(nv_linux_state_t));
 
+    peer_nvl->dev = &dma_mapping->pci_dev->dev;
     peer_nvl->pci_dev = dma_mapping->pci_dev;
 
     peer_nv = NV_STATE_PTR(peer_nvl);
@@ -349,6 +352,15 @@ int nvidia_p2p_destroy_mapping(uint64_t p2p_token)
 
 EXPORT_SYMBOL(nvidia_p2p_destroy_mapping);
 
+static void nv_p2p_mem_info_free_callback(void *data)
+{
+    nv_p2p_mem_info_t *mem_info = (nv_p2p_mem_info_t*) data;
+
+    mem_info->free_callback(mem_info->data);
+
+    nv_p2p_free_platform_data(&mem_info->page_table);
+}
+
 int nvidia_p2p_get_pages(
     uint64_t p2p_token,
     uint32_t va_space,
@@ -425,8 +437,7 @@ int nvidia_p2p_get_pages(
 
     status = rm_p2p_get_pages(sp, p2p_token, va_space,
             virtual_address, length, physical_addresses, wreqmb_h,
-            rreqmb_h, &entries, &gpu_uuid, *page_table,
-            free_callback, data);
+            rreqmb_h, &entries, &gpu_uuid, *page_table);
     if (status != NV_OK)
     {
         goto failed;
@@ -474,6 +485,16 @@ int nvidia_p2p_get_pages(
     os_free_mem(physical_addresses);
     os_free_mem(wreqmb_h);
     os_free_mem(rreqmb_h);
+
+    mem_info->free_callback = free_callback;
+    mem_info->data          = data;
+
+    status = rm_p2p_register_callback(sp, p2p_token, virtual_address, length,
+                                      *page_table, nv_p2p_mem_info_free_callback, mem_info);
+    if (status != NV_OK)
+    {
+        goto failed;
+    }
 
     nv_kmem_cache_free_stack(sp);
 
@@ -614,6 +635,7 @@ int nvidia_p2p_dma_map_pages(
 
     os_mem_set(peer_nvl, 0, sizeof(nv_linux_state_t));
 
+    peer_nvl->dev = &peer->dev;
     peer_nvl->pci_dev = peer;
 
     peer_nv = NV_STATE_PTR(peer_nvl);

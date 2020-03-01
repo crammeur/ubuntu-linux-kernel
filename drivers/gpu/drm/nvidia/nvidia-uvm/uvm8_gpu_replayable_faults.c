@@ -893,7 +893,7 @@ static NV_STATUS translate_instance_ptrs(uvm_gpu_t *gpu,
                 // context (TSG) is still running so we don't cancel an innocent
                 // context.
                 UVM_ASSERT(!current_entry->va_space);
-                UVM_ASSERT(gpu->rm_info.maxSubctxCount > 0);
+                UVM_ASSERT(gpu->max_subcontexts > 0);
 
                 status = push_cancel_on_gpu(gpu,
                                             current_entry->instance_ptr,

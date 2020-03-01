@@ -342,27 +342,12 @@ void uvm_va_space_detach_all_user_channels(uvm_va_space_t *va_space, struct list
         uvm_gpu_va_space_detach_all_user_channels(gpu_va_space, deferred_free_list);
 }
 
-static uvm_ats_ibm_mm_t *uvm_va_space_find_ats_mm(uvm_va_space_t *va_space)
-{
-    uvm_gpu_t *any_gpu = uvm_processor_mask_find_first_va_space_gpu(&va_space->registered_gpu_va_spaces, va_space);
-    if (any_gpu) {
-        uvm_gpu_va_space_t *gpu_va_space = va_space->gpu_va_spaces[uvm_id_gpu_index(any_gpu->id)];
-        UVM_ASSERT(gpu_va_space->va_space == va_space);
-        UVM_ASSERT(gpu_va_space->gpu == any_gpu);
-        return gpu_va_space->ats.ats_mm;
-    }
-    return NULL;
-}
-
 void uvm_va_space_destroy(uvm_va_space_t *va_space)
 {
-    uvm_gpu_va_space_t *gpu_va_space;
     uvm_va_range_t *va_range, *va_range_next;
     uvm_gpu_t *gpu;
     uvm_gpu_id_t gpu_id;
     uvm_global_gpu_id_t global_gpu_id;
-    uvm_ats_ibm_mm_t *ats_mm;
-    NvU32 num_gpu_va_spaces;
     uvm_global_processor_mask_t retained_gpus;
     LIST_HEAD(deferred_free_list);
 
@@ -371,12 +356,6 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     uvm_mutex_lock(&g_uvm_global.va_spaces.lock);
     list_del(&va_space->list_node);
     uvm_mutex_unlock(&g_uvm_global.va_spaces.lock);
-
-    // The ats_mm is attached to all registered GPU VA spaces. Those can't
-    // change since we're in the destroy path, so we can look it up without
-    // holding the VA space lock.
-    ats_mm = uvm_va_space_find_ats_mm(va_space);
-    num_gpu_va_spaces = uvm_processor_mask_get_gpu_count(&va_space->registered_gpu_va_spaces);
 
     uvm_perf_heuristics_stop(va_space);
 
@@ -391,9 +370,6 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     uvm_va_space_stop_all_user_channels(va_space);
     uvm_va_space_up_read_rm(va_space);
 
-    if (ats_mm)
-        uvm_ats_ibm_mm_lock(ats_mm);
-
     // The bottom half GPU page fault handler(s) could still look up and use
     // this va_space via the GPU's instance_ptr_table. Lock them out while we
     // tear down. Once we're done, the bottom half will fail to find any
@@ -405,9 +381,6 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     uvm_va_space_global_gpus(va_space, &retained_gpus);
 
     bitmap_copy(va_space->enabled_peers_teardown, va_space->enabled_peers, UVM_MAX_UNIQUE_GPU_PAIRS);
-
-    for_each_gpu_va_space(gpu_va_space, va_space)
-        UVM_ASSERT(gpu_va_space->ats.ats_mm == ats_mm);
 
     uvm_va_space_detach_all_user_channels(va_space, &deferred_free_list);
 
@@ -483,11 +456,6 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
 
     uvm_deferred_free_object_list(&deferred_free_list);
     UVM_ASSERT(va_space->mm_state.va_space_mm == NULL);
-
-    if (ats_mm) {
-        uvm_ats_ibm_mm_unlock(ats_mm);
-        uvm_ats_ibm_mm_release_count(ats_mm, num_gpu_va_spaces);
-    }
 
     uvm_mutex_lock(&g_uvm_global.global_lock);
 
@@ -607,6 +575,7 @@ bool uvm_va_space_can_read_duplicate(uvm_va_space_t *va_space, uvm_gpu_t *changi
 // (This is different from a per-GPU VA space.)
 NV_STATUS uvm_va_space_register_gpu(uvm_va_space_t *va_space,
                                     const NvProcessorUuid *gpu_uuid,
+                                    const uvm_rm_user_object_t *user_rm_device,
                                     NvBool *numa_enabled,
                                     NvS32 *numa_node_id)
 {
@@ -614,7 +583,7 @@ NV_STATUS uvm_va_space_register_gpu(uvm_va_space_t *va_space,
     uvm_gpu_t *gpu;
     uvm_gpu_t *other_gpu;
 
-    status = uvm_gpu_retain_by_uuid(gpu_uuid, &gpu);
+    status = uvm_gpu_retain_by_uuid(gpu_uuid, user_rm_device, &gpu);
     if (status != NV_OK)
         return status;
 
@@ -757,7 +726,6 @@ NV_STATUS uvm_va_space_unregister_gpu(uvm_va_space_t *va_space, const NvProcesso
     uvm_gpu_va_space_t *gpu_va_space;
     uvm_global_gpu_id_t peer_gpu_id;
     uvm_global_processor_mask_t peers_to_release;
-    uvm_ats_ibm_mm_t *ats_mm = NULL;
     LIST_HEAD(deferred_free_list);
 
     // Stopping channels requires holding the VA space lock in read mode, so do
@@ -787,16 +755,8 @@ NV_STATUS uvm_va_space_unregister_gpu(uvm_va_space_t *va_space, const NvProcesso
     uvm_va_space_downgrade_write_rm(va_space);
 
     gpu_va_space = uvm_gpu_va_space_get(va_space, gpu);
-    if (gpu_va_space) {
+    if (gpu_va_space)
         gpu_va_space_stop_all_channels(gpu_va_space);
-        ats_mm = gpu_va_space->ats.ats_mm;
-        if (ats_mm)
-            UVM_ASSERT(gpu_va_space->ats.enabled);
-
-        // When we drop the lock below, another thread might come in and
-        // unregister the GPU VA space without unregistering the GPU.
-        uvm_ats_ibm_mm_retain_existing(ats_mm);
-    }
 
     // We need to drop the lock to re-take it in write mode. We don't have to
     // retain the GPU because we've prevented other threads from unregistering
@@ -813,9 +773,6 @@ NV_STATUS uvm_va_space_unregister_gpu(uvm_va_space_t *va_space, const NvProcesso
     if (gpu->access_counters_supported)
         uvm_gpu_access_counters_disable(gpu, va_space);
 
-    if (ats_mm)
-        uvm_ats_ibm_mm_lock(ats_mm);
-
     // The mmap_sem lock is needed to establish CPU mappings to any pages
     // evicted from the GPU if accessed by CPU is set for them.
     uvm_down_read_mmap_sem(&current->mm->mmap_sem);
@@ -825,16 +782,8 @@ NV_STATUS uvm_va_space_unregister_gpu(uvm_va_space_t *va_space, const NvProcesso
     // We blocked out other GPU unregisters, so this GPU must still be
     // registered. However, the GPU VA space might have been unregistered on us.
     UVM_ASSERT(uvm_processor_mask_test(&va_space->registered_gpus, gpu->id));
-    if (uvm_processor_mask_test(&va_space->registered_gpu_va_spaces, gpu->id)) {
+    if (uvm_processor_mask_test(&va_space->registered_gpu_va_spaces, gpu->id))
         UVM_ASSERT(uvm_gpu_va_space_get(va_space, gpu) == gpu_va_space);
-        UVM_ASSERT(gpu_va_space->ats.ats_mm == ats_mm);
-
-        // If the GPU VA space is still registered, then this unregister will
-        // take it down and we need to remove its ats_mm reference. It won't yet
-        // be freed because we still have a reference from the
-        // uvm_ats_ibm_mm_retain_existing call above.
-        uvm_ats_ibm_mm_release(ats_mm);
-    }
 
     // This will call disable_peers for all GPU's peers, including NVLink
     unregister_gpu(va_space, gpu, &deferred_free_list, &peers_to_release);
@@ -846,14 +795,6 @@ NV_STATUS uvm_va_space_unregister_gpu(uvm_va_space_t *va_space, const NvProcesso
     uvm_up_read_mmap_sem(&current->mm->mmap_sem);
 
     uvm_deferred_free_object_list(&deferred_free_list);
-
-    if (ats_mm) {
-        // The deferred free above will have called
-        // uvm_ats_ibm_unregister_gpu_va_space, and we can't unlock and release the
-        // ats_mm until after that point.
-        uvm_ats_ibm_mm_unlock(ats_mm);
-        uvm_ats_ibm_mm_release(ats_mm);
-    }
 
     // Release the VA space's GPU and peer counts
     uvm_mutex_lock(&g_uvm_global.global_lock);
@@ -1256,7 +1197,6 @@ NV_STATUS uvm_va_space_register_gpu_va_space(uvm_va_space_t *va_space,
     uvm_gpu_t *gpu;
     uvm_gpu_va_space_t *gpu_va_space;
     uvm_va_range_t *va_range;
-    uvm_ats_ibm_mm_t *ats_mm = NULL;
     LIST_HEAD(deferred_free_list);
 
     gpu = uvm_va_space_retain_gpu_by_uuid(va_space, gpu_uuid);
@@ -1269,15 +1209,6 @@ NV_STATUS uvm_va_space_register_gpu_va_space(uvm_va_space_t *va_space,
         return status;
     }
 
-    if (gpu_va_space->ats.enabled) {
-        // TODO: Bug 2062970: Remove this when IBM's NPU code is updated
-        status = uvm_ats_ibm_mm_retain(&ats_mm);
-        if (status != NV_OK)
-            goto error_unlocked;
-    }
-
-    gpu_va_space->ats.ats_mm = ats_mm;
-    uvm_ats_ibm_mm_lock(ats_mm);
     uvm_ats_ibm_register_lock(va_space);
 
     uvm_down_write_mmap_sem(&current->mm->mmap_sem);
@@ -1335,7 +1266,6 @@ NV_STATUS uvm_va_space_register_gpu_va_space(uvm_va_space_t *va_space,
     uvm_va_space_up_write(va_space);
     uvm_up_write_mmap_sem(&current->mm->mmap_sem);
     uvm_ats_ibm_register_unlock(va_space);
-    uvm_ats_ibm_mm_unlock(ats_mm);
     uvm_gpu_release(gpu);
     return NV_OK;
 
@@ -1354,13 +1284,7 @@ error:
     uvm_up_write_mmap_sem(&current->mm->mmap_sem);
     uvm_ats_ibm_register_unlock(va_space);
 
-error_unlocked:
     destroy_gpu_va_space(gpu_va_space);
-
-    if (ats_mm) {
-        uvm_ats_ibm_mm_unlock(ats_mm);
-        uvm_ats_ibm_mm_release(ats_mm);
-    }
 
     uvm_gpu_release(gpu);
     return status;
@@ -1408,7 +1332,6 @@ NV_STATUS uvm_va_space_unregister_gpu_va_space(uvm_va_space_t *va_space, const N
     NV_STATUS status = NV_OK;
     uvm_gpu_t *gpu;
     uvm_gpu_va_space_t *gpu_va_space;
-    uvm_ats_ibm_mm_t *ats_mm;
     LIST_HEAD(deferred_free_list);
 
     // Stopping channels requires holding the VA space lock in read mode, so do
@@ -1429,15 +1352,10 @@ NV_STATUS uvm_va_space_unregister_gpu_va_space(uvm_va_space_t *va_space, const N
     gpu_va_space_stop_all_channels(gpu_va_space);
 
     // We need to drop the lock to re-take it in write mode
-    ats_mm = gpu_va_space->ats.ats_mm;
-    if (ats_mm)
-        UVM_ASSERT(gpu_va_space->ats.enabled);
-    uvm_ats_ibm_mm_retain_existing(ats_mm);
     uvm_gpu_va_space_retain(gpu_va_space);
     uvm_gpu_retain(gpu);
     uvm_va_space_up_read_rm(va_space);
 
-    uvm_ats_ibm_mm_lock(ats_mm);
     uvm_down_read_mmap_sem(&current->mm->mmap_sem);
     uvm_va_space_down_write(va_space);
 
@@ -1447,32 +1365,18 @@ NV_STATUS uvm_va_space_unregister_gpu_va_space(uvm_va_space_t *va_space, const N
     // an error for double-unregister.
     if (uvm_gpu_va_space_state(gpu_va_space) == UVM_GPU_VA_SPACE_STATE_DEAD) {
         status = NV_ERR_INVALID_DEVICE;
-        goto done;
+    }
+    else {
+        UVM_ASSERT(gpu == uvm_va_space_get_gpu_by_uuid_with_gpu_va_space(va_space, gpu_uuid));
+        UVM_ASSERT(gpu_va_space == uvm_gpu_va_space_get(va_space, gpu));
+
+        remove_gpu_va_space(gpu_va_space, &deferred_free_list);
     }
 
-    UVM_ASSERT(gpu == uvm_va_space_get_gpu_by_uuid_with_gpu_va_space(va_space, gpu_uuid));
-    UVM_ASSERT(gpu_va_space == uvm_gpu_va_space_get(va_space, gpu));
-
-    remove_gpu_va_space(gpu_va_space, &deferred_free_list);
-
-    // Release this GPU VA space's reference on the ats_mm. It won't yet be
-    // freed because we still have a reference from the
-    // uvm_ats_ibm_mm_retain_existing call above.
-    uvm_ats_ibm_mm_release(ats_mm);
-
-done:
     uvm_va_space_up_write(va_space);
     uvm_up_read_mmap_sem(&current->mm->mmap_sem);
+
     uvm_deferred_free_object_list(&deferred_free_list);
-
-    // The deferred free above will have called
-    // uvm_ats_ibm_unregister_gpu_va_space, and we can't unlock and release the
-    // ats_mm until after that point.
-    uvm_ats_ibm_mm_unlock(ats_mm);
-
-    // Release the reference from uvm_ats_ibm_mm_retain_existing
-    uvm_ats_ibm_mm_release(ats_mm);
-
     uvm_gpu_va_space_release(gpu_va_space);
     uvm_gpu_release(gpu);
     return status;

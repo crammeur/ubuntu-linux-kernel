@@ -2269,7 +2269,7 @@ NV_STATUS split_gpu_chunk(uvm_pmm_gpu_t *pmm, uvm_gpu_chunk_t *chunk)
     cache_idx = ilog2(num_sub);
     UVM_ASSERT(chunk_split_cache[cache_idx].cache != NULL);
 
-    suballoc = kmem_cache_zalloc(chunk_split_cache[cache_idx].cache, NV_UVM_GFP_FLAGS);
+    suballoc = nv_kmem_cache_zalloc(chunk_split_cache[cache_idx].cache, NV_UVM_GFP_FLAGS);
     if (suballoc == NULL)
         return NV_ERR_NO_MEMORY;
 
@@ -2280,7 +2280,7 @@ NV_STATUS split_gpu_chunk(uvm_pmm_gpu_t *pmm, uvm_gpu_chunk_t *chunk)
             goto cleanup;
         }
 
-        subchunk = kmem_cache_zalloc(CHUNK_CACHE, NV_UVM_GFP_FLAGS);
+        subchunk = nv_kmem_cache_zalloc(CHUNK_CACHE, NV_UVM_GFP_FLAGS);
         if (!subchunk) {
             status = NV_ERR_NO_MEMORY;
             goto cleanup;
@@ -2947,7 +2947,8 @@ static NV_STATUS init_chunk_split_cache_level(uvm_pmm_gpu_t *pmm, size_t level)
                 align = __alignof__(uvm_pmm_gpu_chunk_suballoc_t);
             }
             chunk_split_cache[level].cache =
-                kmem_cache_create(chunk_split_cache[level].name, size, align, 0, NULL);
+                kmem_cache_create(chunk_split_cache[level].name, size, align, 0, nv_kmem_ctor_dummy);
+
 
             if (!chunk_split_cache[level].cache)
                 return NV_ERR_NO_MEMORY;
@@ -3015,7 +3016,7 @@ static NV_STATUS init_pma_address_batch_cache(uvm_pmm_gpu_t *pmm)
         g_pma_address_batch_cache_ref.cache =
             kmem_cache_create(g_pma_address_batch_cache_ref.name,
                               address_batch_size, __alignof__(UvmGpuPointer),
-                              0, NULL);
+                              0, nv_kmem_ctor_dummy);
 
         if (!g_pma_address_batch_cache_ref.cache)
             return NV_ERR_NO_MEMORY;

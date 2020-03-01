@@ -468,8 +468,8 @@ static int _check_cpu_affinity_test(void)
 
     for_each_online_node(node) {
 
-        // Only test on nodes which have memory
-        if (nv_numa_node_has_memory(node))
+        // Only test on CPU nodes which have memory
+        if (!nv_numa_node_has_memory(node) || !node_state(node, N_CPU))
             continue;
 
         nv_kthread_q_item_init(&q_item, _check_cpu_affinity_callback, &stack_allocation_node);

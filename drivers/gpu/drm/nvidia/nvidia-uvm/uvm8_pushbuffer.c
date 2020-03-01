@@ -24,6 +24,7 @@
 #include "uvm8_api.h"
 #include "uvm8_pushbuffer.h"
 #include "uvm8_channel.h"
+#include "uvm8_global.h"
 #include "uvm8_lock.h"
 #include "uvm8_procfs.h"
 #include "uvm8_push.h"
@@ -38,7 +39,14 @@ static void uvm_pushbuffer_print_common(uvm_pushbuffer_t *pushbuffer, struct seq
 static int nv_procfs_read_pushbuffer_info(struct seq_file *s, void *v)
 {
     uvm_pushbuffer_t *pushbuffer = (uvm_pushbuffer_t *)s->private;
+
+    if (!uvm_down_read_trylock(&g_uvm_global.pm.lock))
+            return -EAGAIN;
+
     uvm_pushbuffer_print_common(pushbuffer, s);
+
+    uvm_up_read(&g_uvm_global.pm.lock);
+
     return 0;
 }
 

@@ -206,6 +206,15 @@ static bool tracker_is_counter(uvm_tools_event_tracker_t *event_tracker)
     return event_tracker != NULL && !event_tracker->is_queue;
 }
 
+static uvm_va_space_t *tools_event_tracker_va_space(uvm_tools_event_tracker_t *event_tracker)
+{
+    uvm_va_space_t *va_space;
+    UVM_ASSERT(event_tracker->uvm_file);
+    va_space = uvm_va_space_get(event_tracker->uvm_file);
+    UVM_ASSERT(uvm_va_space_initialized(va_space) == NV_OK);
+    return va_space;
+}
+
 static void uvm_put_user_pages_dirty(struct page **pages, NvU64 page_count)
 {
     NvU64 i;
@@ -353,7 +362,7 @@ static void destroy_event_tracker(uvm_tools_event_tracker_t *event_tracker)
 {
     if (event_tracker->uvm_file != NULL) {
         NV_STATUS status;
-        uvm_va_space_t *va_space = uvm_va_space_get(event_tracker->uvm_file);
+        uvm_va_space_t *va_space = tools_event_tracker_va_space(event_tracker);
 
         uvm_down_write(&g_tools_va_space_list_lock);
         uvm_down_write(&va_space->perf_events.lock);
@@ -611,12 +620,12 @@ static int uvm_tools_release_entry(struct inode *inode, struct file *filp)
 static long uvm_tools_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     switch (cmd) {
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_INIT_EVENT_TRACKER,         uvm_api_tools_init_event_tracker);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_SET_NOTIFICATION_THRESHOLD, uvm_api_tools_set_notification_threshold);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_EVENT_QUEUE_ENABLE_EVENTS,  uvm_api_tools_event_queue_enable_events);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_EVENT_QUEUE_DISABLE_EVENTS, uvm_api_tools_event_queue_disable_events);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_ENABLE_COUNTERS,            uvm_api_tools_enable_counters);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_DISABLE_COUNTERS,           uvm_api_tools_disable_counters);
+        UVM_ROUTE_CMD_STACK_NO_INIT_CHECK(UVM_TOOLS_INIT_EVENT_TRACKER,         uvm_api_tools_init_event_tracker);
+        UVM_ROUTE_CMD_STACK_NO_INIT_CHECK(UVM_TOOLS_SET_NOTIFICATION_THRESHOLD, uvm_api_tools_set_notification_threshold);
+        UVM_ROUTE_CMD_STACK_NO_INIT_CHECK(UVM_TOOLS_EVENT_QUEUE_ENABLE_EVENTS,  uvm_api_tools_event_queue_enable_events);
+        UVM_ROUTE_CMD_STACK_NO_INIT_CHECK(UVM_TOOLS_EVENT_QUEUE_DISABLE_EVENTS, uvm_api_tools_event_queue_disable_events);
+        UVM_ROUTE_CMD_STACK_NO_INIT_CHECK(UVM_TOOLS_ENABLE_COUNTERS,            uvm_api_tools_enable_counters);
+        UVM_ROUTE_CMD_STACK_NO_INIT_CHECK(UVM_TOOLS_DISABLE_COUNTERS,           uvm_api_tools_disable_counters);
     }
 
     uvm_thread_assert_all_unlocked();
@@ -1576,7 +1585,7 @@ NV_STATUS uvm_api_tools_init_event_tracker(UVM_TOOLS_INIT_EVENT_TRACKER_PARAMS *
     NV_STATUS status = NV_OK;
     uvm_tools_event_tracker_t *event_tracker;
 
-    event_tracker = kmem_cache_zalloc(g_tools_event_tracker_cache, NV_UVM_GFP_FLAGS);
+    event_tracker = nv_kmem_cache_zalloc(g_tools_event_tracker_cache, NV_UVM_GFP_FLAGS);
     if (event_tracker == NULL)
         return NV_ERR_NO_MEMORY;
 
@@ -1590,6 +1599,13 @@ NV_STATUS uvm_api_tools_init_event_tracker(UVM_TOOLS_INIT_EVENT_TRACKER_PARAMS *
         fput(event_tracker->uvm_file);
         event_tracker->uvm_file = NULL;
         status = NV_ERR_INSUFFICIENT_PERMISSIONS;
+        goto fail;
+    }
+
+    status = uvm_va_space_initialized(uvm_va_space_get(event_tracker->uvm_file));
+    if (status != NV_OK) {
+        fput(event_tracker->uvm_file);
+        event_tracker->uvm_file = NULL;
         goto fail;
     }
 
@@ -1730,6 +1746,7 @@ static NV_STATUS tools_update_status(uvm_va_space_t *va_space)
     uvm_assert_rwsem_locked_write(&g_tools_va_space_list_lock);
     uvm_assert_rwsem_locked_write(&va_space->perf_events.lock);
     uvm_assert_rwsem_locked_write(&va_space->tools.lock);
+    UVM_ASSERT(uvm_va_space_initialized(va_space) == NV_OK);
 
     status = tools_update_perf_events_callbacks(va_space);
     if (status != NV_OK)
@@ -1800,7 +1817,7 @@ NV_STATUS uvm_api_tools_event_queue_enable_events(UVM_TOOLS_EVENT_QUEUE_ENABLE_E
     if (mask_contains_invalid_events(params->eventTypeFlags))
         return NV_ERR_INVALID_ARGUMENT;
 
-    va_space = uvm_va_space_get(event_tracker->uvm_file);
+    va_space = tools_event_tracker_va_space(event_tracker);
 
     uvm_down_write(&g_tools_va_space_list_lock);
     uvm_down_write(&va_space->perf_events.lock);
@@ -1841,7 +1858,7 @@ NV_STATUS uvm_api_tools_event_queue_disable_events(UVM_TOOLS_EVENT_QUEUE_DISABLE
     if (!tracker_is_queue(event_tracker))
         return NV_ERR_INVALID_ARGUMENT;
 
-    va_space = uvm_va_space_get(event_tracker->uvm_file);
+    va_space = tools_event_tracker_va_space(event_tracker);
 
     uvm_down_write(&g_tools_va_space_list_lock);
     uvm_down_write(&va_space->perf_events.lock);
@@ -1872,7 +1889,7 @@ NV_STATUS uvm_api_tools_enable_counters(UVM_TOOLS_ENABLE_COUNTERS_PARAMS *params
     if (!tracker_is_counter(event_tracker))
         return NV_ERR_INVALID_ARGUMENT;
 
-    va_space = uvm_va_space_get(event_tracker->uvm_file);
+    va_space = tools_event_tracker_va_space(event_tracker);
 
     uvm_down_write(&g_tools_va_space_list_lock);
     uvm_down_write(&va_space->perf_events.lock);
@@ -1912,7 +1929,7 @@ NV_STATUS uvm_api_tools_disable_counters(UVM_TOOLS_DISABLE_COUNTERS_PARAMS *para
     if (!tracker_is_counter(event_tracker))
         return NV_ERR_INVALID_ARGUMENT;
 
-    va_space = uvm_va_space_get(event_tracker->uvm_file);
+    va_space = tools_event_tracker_va_space(event_tracker);
 
     uvm_down_write(&g_tools_va_space_list_lock);
     uvm_down_write(&va_space->perf_events.lock);

@@ -202,7 +202,7 @@ static void alloc_tracking_add(void *p, const char *file, int line, const char *
 
     if (uvm_leak_checker >= UVM_KVMALLOC_LEAK_CHECK_ORIGIN) {
         // Silently ignore OOM errors
-        info = kmem_cache_zalloc(g_uvm_leak_checker.info_cache, NV_UVM_GFP_FLAGS);
+        info = nv_kmem_cache_zalloc(g_uvm_leak_checker.info_cache, NV_UVM_GFP_FLAGS);
         if (!info) {
             atomic_long_inc(&g_uvm_leak_checker.untracked_allocations);
             return;

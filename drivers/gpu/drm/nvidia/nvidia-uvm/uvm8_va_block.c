@@ -504,13 +504,13 @@ NV_STATUS uvm_va_block_create(uvm_va_range_t *va_range,
     UVM_ASSERT(UVM_VA_BLOCK_ALIGN_DOWN(start) == UVM_VA_BLOCK_ALIGN_DOWN(end));
 
     if (uvm_enable_builtin_tests) {
-        uvm_va_block_wrapper_t *block_wrapper = kmem_cache_zalloc(g_uvm_va_block_cache, NV_UVM_GFP_FLAGS);
+        uvm_va_block_wrapper_t *block_wrapper = nv_kmem_cache_zalloc(g_uvm_va_block_cache, NV_UVM_GFP_FLAGS);
 
         if (block_wrapper)
             block = &block_wrapper->block;
     }
     else {
-        block = kmem_cache_zalloc(g_uvm_va_block_cache, NV_UVM_GFP_FLAGS);
+        block = nv_kmem_cache_zalloc(g_uvm_va_block_cache, NV_UVM_GFP_FLAGS);
     }
 
     if (!block) {
@@ -692,7 +692,7 @@ static uvm_va_block_gpu_state_t *block_gpu_state_get_alloc(uvm_va_block_t *block
     if (gpu_state)
         return gpu_state;
 
-    gpu_state = kmem_cache_zalloc(g_uvm_va_block_gpu_state_cache, NV_UVM_GFP_FLAGS);
+    gpu_state = nv_kmem_cache_zalloc(g_uvm_va_block_gpu_state_cache, NV_UVM_GFP_FLAGS);
     if (!gpu_state)
         return NULL;
 

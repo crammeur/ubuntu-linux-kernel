@@ -363,13 +363,24 @@ typedef struct UvmGpuCaps_tag
 
 typedef struct UvmGpuAddressSpaceInfo_tag
 {
-    NvU32 bigPageSize;
+    NvU32           bigPageSize;
 
-    NvBool atsEnabled;
+    NvBool          atsEnabled;
 
     // Mapped registers that contain the current GPU time
-    volatile NvU32 *time0Offset;
-    volatile NvU32 *time1Offset;
+    volatile NvU32  *time0Offset;
+    volatile NvU32  *time1Offset;
+
+    // Maximum number of subcontexts supported under this GPU address space
+    NvU32           maxSubctxCount;
+
+
+
+
+
+
+
+
 } UvmGpuAddressSpaceInfo;
 
 typedef struct UvmGpuAllocInfo_tag
@@ -450,12 +461,24 @@ typedef struct UvmPlatformInfo_tag
     NvBool atsSupported;
 } UvmPlatformInfo;
 
+typedef struct UvmGpuClientInfo_tag
+{
+    NvHandle hClient;
+
+
+
+
+} UvmGpuClientInfo;
+
 #define UVM_GPU_NAME_LENGTH 0x40
 
 typedef struct UvmGpuInfo_tag
 {
     // Printable gpu name
     char name[UVM_GPU_NAME_LENGTH];
+
+    // Uuid of this gpu
+    NvProcessorUuid uuid;
 
     // Gpu architecture; NV2080_CTRL_MC_ARCH_INFO_ARCHITECTURE_*
     NvU32 gpuArch;
@@ -487,11 +510,8 @@ typedef struct UvmGpuInfo_tag
     // Number of subdevices in SLI group.
     NvU32 subdeviceCount;
 
-    // NV_TRUE if this is a simulated/emulated GPU. NV_FALSE, otherwise
+    // NV_TRUE if this is a simulated/emulated GPU. NV_FALSE, otherwise.
     NvBool isSimulated;
-
-    // Maximum number of subcontexts supported by the GPU
-    NvU32 maxSubctxCount;
 
     // Number of GPCs
     NvU32 gpcCount;
@@ -501,6 +521,19 @@ typedef struct UvmGpuInfo_tag
 
     // Maximum number of TPCs per GPC
     NvU32 maxTpcPerGpc;
+
+
+
+
+
+
+
+
+
+
+
+
+
 } UvmGpuInfo;
 
 typedef struct UvmGpuVaAllocInfo_tag
@@ -534,10 +567,11 @@ typedef struct UvmPmaAllocationOptions_tag
 } UvmPmaAllocationOptions;
 
 //
-// Mirrored in PMA (PMA_PUBLIC_STATS)
+// Mirrored in PMA (PMA_STATS)
 //
 typedef struct UvmPmaStatistics_tag
 {
+    volatile NvU64 numPages2m;      // PMA-wide 2MB pages count
     volatile NvU64 numFreePages64k; // PMA-wide free 64KB page count
     volatile NvU64 numFreePages2m;  // PMA-wide free 2MB pages count
 } UvmPmaStatistics;
@@ -749,6 +783,7 @@ typedef UvmGpuP2PCapsParams getP2PCapsParams;
 typedef UvmGpuAddressSpaceInfo gpuAddressSpaceInfo;
 typedef UvmGpuAllocInfo gpuAllocInfo;
 typedef UvmGpuInfo gpuInfo;
+typedef UvmGpuClientInfo gpuClientInfo;
 typedef UvmGpuAccessCntrInfo gpuAccessCntrInfo;
 typedef UvmGpuAccessCntrConfig gpuAccessCntrConfig;
 typedef UvmGpuFaultInfo gpuFaultInfo;

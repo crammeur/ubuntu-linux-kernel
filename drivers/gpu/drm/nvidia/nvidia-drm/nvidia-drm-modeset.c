@@ -458,7 +458,7 @@ done:
 }
 
 void nv_drm_handle_flip_occurred(struct nv_drm_device *nv_dev,
-                                 NvU32 head, NvKmsKapiPlaneType plane)
+                                 NvU32 head, NvKmsKapiLayerType plane)
 {
     struct nv_drm_crtc *nv_crtc = nv_drm_crtc_lookup(nv_dev, head);
 
@@ -467,12 +467,12 @@ void nv_drm_handle_flip_occurred(struct nv_drm_device *nv_dev,
     }
 
     switch (plane) {
-        case NVKMS_KAPI_PLANE_PRIMARY:
+        case NVKMS_KAPI_LAYER_PRIMARY:
             __nv_drm_handle_flip_event(nv_crtc);
             break;
-        case NVKMS_KAPI_PLANE_OVERLAY:
+        case NVKMS_KAPI_LAYER_OVERLAY:
             /* TODO */
-        case NVKMS_KAPI_PLANE_CURSOR:
+        case NVKMS_KAPI_LAYER_CURSOR:
         default:
             BUG_ON(1);
     }

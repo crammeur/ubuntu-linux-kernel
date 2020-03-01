@@ -90,7 +90,6 @@ static NvU32 nvidia_modeset_enumerate_gpus(nv_gpu_info_t *gpu_info)
         gpu_info[count].pci_info.slot     = nv->pci_info.slot;
         gpu_info[count].pci_info.function = nv->pci_info.function;
 
-        gpu_info[count].os_dev_ptr = nvl->pci_dev;
         gpu_info[count].os_device_ptr = nvl->dev;
 
         count++;

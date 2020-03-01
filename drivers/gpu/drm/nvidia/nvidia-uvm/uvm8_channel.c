@@ -1252,7 +1252,14 @@ static NV_STATUS manager_create_procfs_dirs(uvm_channel_manager_t *manager)
 static int nv_procfs_read_manager_pending_pushes(struct seq_file *s, void *v)
 {
     uvm_channel_manager_t *manager = (uvm_channel_manager_t *)s->private;
+
+    if (!uvm_down_read_trylock(&g_uvm_global.pm.lock))
+            return -EAGAIN;
+
     channel_manager_print_pending_pushes(manager, s);
+
+    uvm_up_read(&g_uvm_global.pm.lock);
+
     return 0;
 }
 
@@ -1284,7 +1291,14 @@ static NV_STATUS manager_create_procfs(uvm_channel_manager_t *manager)
 static int nv_procfs_read_channel_info(struct seq_file *s, void *v)
 {
     uvm_channel_t *channel = (uvm_channel_t *)s->private;
+
+    if (!uvm_down_read_trylock(&g_uvm_global.pm.lock))
+            return -EAGAIN;
+
     uvm_channel_print_info(channel, s);
+
+    uvm_up_read(&g_uvm_global.pm.lock);
+
     return 0;
 }
 
@@ -1298,8 +1312,15 @@ UVM_DEFINE_SINGLE_PROCFS_FILE(channel_info_entry);
 static int nv_procfs_read_channel_pushes(struct seq_file *s, void *v)
 {
     uvm_channel_t *channel = (uvm_channel_t *)s->private;
+
+    if (!uvm_down_read_trylock(&g_uvm_global.pm.lock))
+            return -EAGAIN;
+
     // Include up to 5 finished pushes for some context
     channel_print_pushes(channel, 5, s);
+
+    uvm_up_read(&g_uvm_global.pm.lock);
+
     return 0;
 }
 

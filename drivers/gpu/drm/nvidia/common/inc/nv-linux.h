@@ -178,7 +178,7 @@ static inline uid_t __kuid_val(uid_t uid)
 #include <linux/nodemask.h>
 
 #include <linux/workqueue.h>        /* workqueue                        */
-#include <nv-kthread-q.h>           /* kthread based queue              */
+#include "nv-kthread-q.h"           /* kthread based queue              */
 
 #if defined(NV_LINUX_EFI_H_PRESENT)
 #include <linux/efi.h>              /* efi_enabled                      */
@@ -414,6 +414,8 @@ extern int nv_pat_mode;
 #define NV_GFP_DMA32 (NV_GFP_KERNEL)
 #endif
 
+extern NvBool nvos_is_chipset_io_coherent(void);
+
 #if defined(NVCPU_X86) || defined(NVCPU_X86_64)
 #define CACHE_FLUSH()  asm volatile("wbinvd":::"memory")
 #define WRITE_COMBINE_FLUSH() asm volatile("sfence":::"memory")
@@ -435,7 +437,14 @@ extern int nv_pat_mode;
 #elif defined(NVCPU_AARCH64)
     static inline void nv_flush_cache_cpu(void *info)
     {
-        flush_cache_all();
+        if (!nvos_is_chipset_io_coherent())
+        {
+#if defined(NV_FLUSH_CACHE_ALL_PRESENT)
+            flush_cache_all();
+#else
+            WARN_ONCE(0, "NVRM: kernel does not support flush_cache_all()\n");
+#endif
+        }
     }
 #define CACHE_FLUSH()            nv_flush_cache_cpu(NULL)
 #define CACHE_FLUSH_ALL()        on_each_cpu(nv_flush_cache_cpu, NULL, 1)
@@ -622,8 +631,6 @@ static NvBool nv_numa_node_has_memory(int node_id)
     {                                                \
         free_pages(ptr, order);                      \
     }
-
-extern NvBool nvos_is_chipset_io_coherent(void);
 
 static inline NvUPtr nv_vmap(struct page **pages, NvU32 page_count,
     NvBool cached)
@@ -1005,20 +1012,74 @@ static inline vm_fault_t nv_insert_pfn(struct vm_area_struct *vma,
 
 extern void *nvidia_stack_t_cache;
 
+/*
+ * On Linux, when a kmem cache is created, a new sysfs entry is created
+ * for the same unless it's merged with an existing cache. Upstream Linux
+ * kernel commit 3b7b314053d021601940c50b07f5f1423ae67e21 (version 4.12+)
+ * made cache destruction asynchronous which creates a race between cache
+ * destroy and create. A new cache created with attributes as
+ * a previous cache, which is scheduled for destruction, can try to create
+ * a sysfs entry with the same conflicting name. Upstream Linux kernel
+ * commit d50d82faa0c964e31f7a946ba8aba7c715ca7ab0 (4.18) fixes this issue
+ * by cleaning up sysfs entry within slab_mutex, so the entry is deleted
+ * before a cache with the same attributes could be created.
+ *
+ * To workaround this kernel issue we take two steps:
+ * - Create unmergeable caches: a kmem_cache with a constructor is
+ *   unmergeable. So, we define an empty contructor for the same.
+ *   We need to create unmergeable caches to control all kmem destory
+ *   calls so we can flush.
+ * - Issue flush_scheduled_work() after kmem_cache_destroy() to make cache
+ *   destruction immediate and avoid race between destroy and create as
+ *   described above.
+ */
+#if defined(NV_KMEM_CACHE_HAS_KOBJ_REMOVE_WORK) && !defined(NV_SYSFS_SLAB_UNLINK_PRESENT)
+static inline void nv_kmem_ctor_dummy(void *arg)
+{
+    (void)arg;
+}
+#define NV_KMEM_CACHE_DESTROY_FLUSH flush_scheduled_work
+#else
+#define nv_kmem_ctor_dummy NULL
+#define NV_KMEM_CACHE_DESTROY_FLUSH()
+#endif
+
 #define NV_KMEM_CACHE_CREATE(name, type)    \
-    kmem_cache_create(name, sizeof(type), 0, 0, NULL)
+    kmem_cache_create(name, sizeof(type), 0, 0, nv_kmem_ctor_dummy)
 
 /* The NULL pointer check is required for kernels older than 4.3 */
 #define NV_KMEM_CACHE_DESTROY(kmem_cache)   \
     if (kmem_cache != NULL)                 \
     {                                       \
         kmem_cache_destroy(kmem_cache);     \
+        NV_KMEM_CACHE_DESTROY_FLUSH();      \
     }
 
 #define NV_KMEM_CACHE_ALLOC(kmem_cache)     \
     kmem_cache_alloc(kmem_cache, GFP_KERNEL)
 #define NV_KMEM_CACHE_FREE(ptr, kmem_cache) \
     kmem_cache_free(kmem_cache, ptr)
+
+static inline void *nv_kmem_cache_zalloc(struct kmem_cache *k, gfp_t flags)
+{
+#if defined(NV_KMEM_CACHE_HAS_KOBJ_REMOVE_WORK) && !defined(NV_SYSFS_SLAB_UNLINK_PRESENT)
+    /*
+     * We cannot call kmem_cache_zalloc directly as it adds the __GFP_ZERO
+     * flag. This flag together with the presence of a slab constructor is
+     * flagged as a potential bug by the Linux kernel since it is the role
+     * of a constructor to fill an allocated object with the desired
+     * pattern. In our case, we specified a (dummy) constructor as a
+     * workaround for a bug and not to zero-initialize objects. So, we take
+     * the pain here to memset allocated object ourselves.
+     */
+    void *object = kmem_cache_alloc(k, flags);
+    if (object)
+        memset(object, 0, kmem_cache_size(k));
+    return object;
+#else
+    return kmem_cache_zalloc(k, flags);
+#endif
+}
 
 static inline int nv_kmem_cache_alloc_stack(nvidia_stack_t **stack)
 {
@@ -1391,7 +1452,7 @@ typedef struct nv_linux_state_s {
     /*
      * file handle for pci sysfs config file (/sys/bus/pci/devices/.../config)
      * which will be opened during device probe
-     */   
+     */
     struct file *sysfs_config_file;
 
     /* Per-GPU queue */

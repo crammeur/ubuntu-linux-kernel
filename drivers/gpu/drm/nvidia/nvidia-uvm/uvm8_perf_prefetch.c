@@ -167,7 +167,7 @@ static block_prefetch_info_t *prefetch_info_get_create(uvm_va_block_t *va_block)
 
         UVM_ASSERT(num_leaves <= PAGES_PER_UVM_VA_BLOCK);
 
-        prefetch_info = kmem_cache_zalloc(g_prefetch_info_cache, NV_UVM_GFP_FLAGS);
+        prefetch_info = nv_kmem_cache_zalloc(g_prefetch_info_cache, NV_UVM_GFP_FLAGS);
         if (!prefetch_info)
             goto fail;
 

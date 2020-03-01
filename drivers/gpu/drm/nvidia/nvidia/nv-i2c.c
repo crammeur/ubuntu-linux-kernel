@@ -218,9 +218,17 @@ void* NV_API_CALL nv_i2c_add_adapter(nv_state_t *nv, NvU32 port)
 
     pI2cAdapter->dev.parent = nvl->dev;
 
-    snprintf(pI2cAdapter->name, sizeof(pI2cAdapter->name),
-             "NVIDIA i2c adapter %u at %x:%02x.%u", port, nv->pci_info.bus,
+    if (nvl->pci_dev != NULL)
+    {
+        snprintf(pI2cAdapter->name, sizeof(pI2cAdapter->name),
+            "NVIDIA i2c adapter %u at %x:%02x.%u", port, nv->pci_info.bus,
              nv->pci_info.slot, PCI_FUNC(nvl->pci_dev->devfn));
+    }
+    else
+    {
+        snprintf(pI2cAdapter->name, sizeof(pI2cAdapter->name),
+            "NVIDIA SOC i2c adapter %u", port);
+    }
 
     // add our data to the structure
     pI2cAdapter->algo_data = (void *)nv;

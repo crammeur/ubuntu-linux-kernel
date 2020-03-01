@@ -30,6 +30,7 @@
 #include "uvm8_lock.h"
 #include "uvm8_thread_context.h"
 #include "uvm8_kvmalloc.h"
+#include "uvm8_va_space.h"
 
 // This weird number comes from UVM_PREVENT_MIGRATION_RANGE_GROUPS_PARAMS. That
 // ioctl is called frequently so we don't want to allocate a copy every time.
@@ -38,47 +39,72 @@
 
 // The UVM_ROUTE_CMD_* macros are only intended for use in the ioctl routines
 
-// If the BUILD_BUG_ON fires, use UVM_ROUTE_CMD_ALLOC instead.
-#define UVM_ROUTE_CMD_STACK(cmd, function_name)                             \
-    case cmd:                                                               \
-    {                                                                       \
-        cmd##_PARAMS params;                                                \
-        BUILD_BUG_ON(sizeof(params) > UVM_MAX_IOCTL_PARAM_STACK_SIZE);      \
-        if (nv_copy_from_user(&params, (void __user*)arg, sizeof(params)))  \
-            return -EFAULT;                                                 \
-                                                                            \
-        params.rmStatus = uvm_global_get_status();                          \
-        if (params.rmStatus == NV_OK)                                       \
-            params.rmStatus = function_name(&params, filp);                 \
-        if (nv_copy_to_user((void __user*)arg, &params, sizeof(params)))    \
-            return -EFAULT;                                                 \
-                                                                            \
-        return 0;                                                           \
+// If the BUILD_BUG_ON fires, use __UVM_ROUTE_CMD_ALLOC instead.
+#define __UVM_ROUTE_CMD_STACK(cmd, params_type, function_name, do_init_check)       \
+    case cmd:                                                                       \
+    {                                                                               \
+        params_type params;                                                         \
+        BUILD_BUG_ON(sizeof(params) > UVM_MAX_IOCTL_PARAM_STACK_SIZE);              \
+        if (nv_copy_from_user(&params, (void __user*)arg, sizeof(params)))          \
+            return -EFAULT;                                                         \
+                                                                                    \
+        params.rmStatus = uvm_global_get_status();                                  \
+        if (params.rmStatus == NV_OK) {                                             \
+            if (do_init_check)                                                      \
+                params.rmStatus = uvm_va_space_initialized(uvm_va_space_get(filp)); \
+            if (likely(params.rmStatus == NV_OK))                                   \
+                params.rmStatus = function_name(&params, filp);                     \
+        }                                                                           \
+                                                                                    \
+        if (nv_copy_to_user((void __user*)arg, &params, sizeof(params)))            \
+            return -EFAULT;                                                         \
+                                                                                    \
+        return 0;                                                                   \
     }
 
-// If the BUILD_BUG_ON fires, use UVM_ROUTE_CMD_STACK instead
-#define UVM_ROUTE_CMD_ALLOC(cmd, function_name)                              \
-    case cmd:                                                                \
-    {                                                                        \
-        int ret = 0;                                                         \
-        cmd##_PARAMS *params = uvm_kvmalloc(sizeof(*params));                \
-        if (!params)                                                         \
-            return -ENOMEM;                                                  \
-        BUILD_BUG_ON(sizeof(*params) <= UVM_MAX_IOCTL_PARAM_STACK_SIZE);     \
-        if (nv_copy_from_user(params, (void __user*)arg, sizeof(*params))) { \
-            uvm_kvfree(params);                                              \
-            return -EFAULT;                                                  \
-        }                                                                    \
-                                                                             \
-        params->rmStatus = uvm_global_get_status();                          \
-        if (params->rmStatus == NV_OK)                                       \
-            params->rmStatus = function_name(params, filp);                  \
-        if (nv_copy_to_user((void __user*)arg, params, sizeof(*params)))     \
-            ret = -EFAULT;                                                   \
-                                                                             \
-        uvm_kvfree(params);                                                  \
-        return ret;                                                          \
+// We need to concatenate cmd##_PARAMS here to avoid the preprocessor's argument
+// prescan. Attempting concatenation in the lower-level macro will fail because
+// it will have been expanded to a literal by then.
+#define UVM_ROUTE_CMD_STACK_NO_INIT_CHECK(cmd, function_name) \
+    __UVM_ROUTE_CMD_STACK(cmd, cmd##_PARAMS, function_name, false)
+
+#define UVM_ROUTE_CMD_STACK_INIT_CHECK(cmd, function_name) \
+    __UVM_ROUTE_CMD_STACK(cmd, cmd##_PARAMS, function_name, true)
+
+// If the BUILD_BUG_ON fires, use __UVM_ROUTE_CMD_STACK instead
+#define __UVM_ROUTE_CMD_ALLOC(cmd, params_type, function_name, do_init_check)           \
+    case cmd:                                                                           \
+    {                                                                                   \
+        int ret = 0;                                                                    \
+        params_type *params = uvm_kvmalloc(sizeof(*params));                            \
+        if (!params)                                                                    \
+            return -ENOMEM;                                                             \
+        BUILD_BUG_ON(sizeof(*params) <= UVM_MAX_IOCTL_PARAM_STACK_SIZE);                \
+        if (nv_copy_from_user(params, (void __user*)arg, sizeof(*params))) {            \
+            uvm_kvfree(params);                                                         \
+            return -EFAULT;                                                             \
+        }                                                                               \
+                                                                                        \
+        params->rmStatus = uvm_global_get_status();                                     \
+        if (params->rmStatus == NV_OK) {                                                \
+            if (do_init_check)                                                          \
+                params->rmStatus = uvm_va_space_initialized(uvm_va_space_get(filp));    \
+            if (likely(params->rmStatus == NV_OK))                                      \
+                params->rmStatus = function_name(params, filp);                         \
+        }                                                                               \
+                                                                                        \
+        if (nv_copy_to_user((void __user*)arg, params, sizeof(*params)))                \
+            ret = -EFAULT;                                                              \
+                                                                                        \
+        uvm_kvfree(params);                                                             \
+        return ret;                                                                     \
     }
+
+#define UVM_ROUTE_CMD_ALLOC_NO_INIT_CHECK(cmd, function_name) \
+    __UVM_ROUTE_CMD_ALLOC(cmd, cmd##_PARAMS, function_name, false)
+
+#define UVM_ROUTE_CMD_ALLOC_INIT_CHECK(cmd, function_name) \
+    __UVM_ROUTE_CMD_ALLOC(cmd, cmd##_PARAMS, function_name, true)
 
 // Wrap an entry point into the UVM module.
 //

@@ -26,11 +26,19 @@
 # $(1): The object files.
 # $(2): The CFLAGS to add for those object files.
 #
-
+# With kernel git commit 54b8ae66ae1a3454a7645d159a482c31cd89ab33, the
+# handling of object-specific CFLAGs, CFLAGS_$(object) has changed. Prior to
+# this commit, the CFLAGS_$(object) variable was required to be defined with
+# only the the object name (<CFLAGS_somefile.o>). With the aforementioned git
+# commit, it is now required to give Kbuild relative paths along-with the
+# object name (CFLAGS_<somepath>/somefile.o>). As a result, CFLAGS_$(object)
+# is set twice, once with a relative path to the object files and once with
+# just the object files.
+#
 ASSIGN_PER_OBJ_CFLAGS = \
  $(foreach _cflags_variable, \
- $(addprefix CFLAGS_,$(notdir $(1))), \
- $(eval $(_cflags_variable) += $(2)))
+ $(notdir $(1)) $(1), \
+ $(eval $(addprefix CFLAGS_,$(_cflags_variable)) += $(2)))
 
 
 #
@@ -59,7 +67,7 @@ $(foreach _module, $(NV_KERNEL_MODULES), \
 EXTRA_CFLAGS += -I$(src)/common/inc
 EXTRA_CFLAGS += -I$(src)
 EXTRA_CFLAGS += -Wall -MD $(DEFINES) $(INCLUDES) -Wno-cast-qual -Wno-error -Wno-format-extra-args
-EXTRA_CFLAGS += -D__KERNEL__ -DMODULE -DNVRM -DNV_VERSION_STRING=\"435.21\" -Wno-unused-function -Wuninitialized -fno-strict-aliasing -mno-red-zone -mcmodel=kernel -DNV_UVM_ENABLE
+EXTRA_CFLAGS += -D__KERNEL__ -DMODULE -DNVRM -DNV_VERSION_STRING=\"440.44\" -Wno-unused-function -Wuninitialized -fno-strict-aliasing -mno-red-zone -mcmodel=kernel -DNV_UVM_ENABLE
 EXTRA_CFLAGS += $(call cc-option,-Werror=undef,)
 EXTRA_CFLAGS += -DNV_SPECTRE_V2=$(NV_SPECTRE_V2)
 
@@ -94,7 +102,9 @@ NV_CONFTEST_HEADER := $(obj)/conftest/headers.h
 NV_CONFTEST_CMD := /bin/sh $(NV_CONFTEST_SCRIPT) \
  "$(CC)" $(ARCH) $(NV_KERNEL_SOURCES) $(NV_KERNEL_OUTPUT)
 
-NV_CONFTEST_CFLAGS := $(shell $(NV_CONFTEST_CMD) build_cflags)
+NV_CFLAGS_FROM_CONFTEST := $(shell $(NV_CONFTEST_CMD) build_cflags)
+
+NV_CONFTEST_CFLAGS = $(NV_CFLAGS_FROM_CONFTEST) $(EXTRA_CFLAGS) -fno-pie
 
 NV_CONFTEST_COMPILE_TEST_HEADERS := $(obj)/conftest/macros.h
 NV_CONFTEST_COMPILE_TEST_HEADERS += $(obj)/conftest/functions.h
@@ -156,7 +166,7 @@ $(obj)/conftest/patches.h: $(NV_CONFTEST_SCRIPT)
 
 $(obj)/conftest/headers.h: $(NV_CONFTEST_SCRIPT)
 	@mkdir -p $(obj)/conftest
-	@$(NV_CONFTEST_CMD) test_kernel_headers > $@
+	@$(NV_CONFTEST_CMD) test_kernel_headers '$(NV_CONFTEST_CFLAGS)' > $@
 
 clean-dirs := $(obj)/conftest
 

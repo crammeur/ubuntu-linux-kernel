@@ -89,6 +89,4 @@ typedef struct uvm_pmm_sysmem_mappings_struct uvm_pmm_sysmem_mappings_t;
 
 typedef struct uvm_reverse_map_struct uvm_reverse_map_t;
 
-typedef struct uvm_ats_ibm_mm_struct uvm_ats_ibm_mm_t;
-
 #endif //__UVM8_FORWARD_DECL_H__

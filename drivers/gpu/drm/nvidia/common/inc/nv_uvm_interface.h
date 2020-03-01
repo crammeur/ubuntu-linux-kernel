@@ -123,6 +123,7 @@ NV_STATUS nvUvmInterfaceSessionDestroy(uvmGpuSessionHandle session);
       NV_ERR_OBJECT_NOT_FOUND
 */
 NV_STATUS nvUvmInterfaceDeviceCreate(uvmGpuSessionHandle session,
+                                     const UvmGpuInfo *pGpuInfo,
                                      const NvProcessorUuid *gpuUuid,
                                      uvmGpuDeviceHandle *device);
 
@@ -596,12 +597,21 @@ NV_STATUS nvUvmInterfaceQueryCopyEnginesCaps(uvmGpuAddressSpaceHandle vaSpace,
 
     Return various gpu info, refer to the UvmGpuInfo struct for details.
     If no gpu matching the uuid is found, an error will be returned.
+*/
 
+
+
+
+
+
+/*
     Error codes:
       NV_ERR_GENERIC
       NV_ERR_INSUFFICIENT_RESOURCES
- */
-NV_STATUS nvUvmInterfaceGetGpuInfo(const NvProcessorUuid *gpuUuid, UvmGpuInfo *pGpuInfo);
+*/
+NV_STATUS nvUvmInterfaceGetGpuInfo(const NvProcessorUuid *gpuUuid,
+                                   const UvmGpuClientInfo *pGpuClientInfo,
+                                   UvmGpuInfo *pGpuInfo);
 
 /*******************************************************************************
     nvUvmInterfaceServiceDeviceInterruptsRM
@@ -1037,6 +1047,13 @@ void nvUvmInterfaceP2pObjectDestroy(uvmGpuSessionHandle session,
         NV_ERR_INVALID_LIMIT            - (offset + size) is beyond the allocation size.
         NV_ERR_BUFFER_TOO_SMALL         - gpuExternalMappingInfo.pteBufferSize is insufficient to
                                           store single PTE.
+        NV_ERR_NOT_READY                - Returned when querying the PTEs requires a deferred setup
+                                          which has not yet completed. It is expected that the caller
+                                          will reattempt the call until a different code is returned.
+
+
+
+
 */
 NV_STATUS nvUvmInterfaceGetExternalAllocPtes(uvmGpuAddressSpaceHandle vaSpace,
                                              NvHandle hMemory,

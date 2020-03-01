@@ -19,11 +19,13 @@
 #define NVKMS_RIGHT                           1
 #define NVKMS_MAX_EYES                        2
 
-#define NVKMS_MAIN_PLANE                      0
-#define NVKMS_OVERLAY_PLANE                   1
-#define NVKMS_MAX_PLANES_PER_HEAD             2
-#define NVKMS_ALL_PLANES_MASK                (BIT(NVKMS_MAIN_PLANE) | \
-                                              BIT(NVKMS_OVERLAY_PLANE))
+#define NVKMS_MAIN_LAYER                      0
+#define NVKMS_OVERLAY_LAYER                   1
+#define NVKMS_MAX_LAYERS_PER_HEAD             2
+#define NVKMS_ALL_LAYERS_MASK                (BIT(NVKMS_MAIN_LAYER) | \
+                                              BIT(NVKMS_OVERLAY_LAYER))
+
+#define NVKMS_MAX_PLANES_PER_SURFACE          3
 
 #define NVKMS_DP_ADDRESS_STRING_LENGTH        64
 
@@ -107,124 +109,6 @@ typedef enum {
     NVKMS_CONNECTOR_SIGNAL_FORMAT_MAX     =
       NVKMS_CONNECTOR_SIGNAL_FORMAT_UNKNOWN,
 } NvKmsConnectorSignalFormat;
-
-enum NvKmsSurfaceMemoryFormat {
-    NvKmsSurfaceMemoryFormatI8               =  0,
-    NvKmsSurfaceMemoryFormatA1R5G5B5         =  1,
-    NvKmsSurfaceMemoryFormatX1R5G5B5         =  2,
-    NvKmsSurfaceMemoryFormatR5G6B5           =  3,
-    NvKmsSurfaceMemoryFormatA8R8G8B8         =  4,
-    NvKmsSurfaceMemoryFormatX8R8G8B8         =  5,
-    NvKmsSurfaceMemoryFormatA2B10G10R10      =  6,
-    NvKmsSurfaceMemoryFormatX2B10G10R10      =  7,
-    NvKmsSurfaceMemoryFormatA8B8G8R8         =  8,
-    NvKmsSurfaceMemoryFormatX8B8G8R8         =  9,
-    NvKmsSurfaceMemoryFormatRF16GF16BF16AF16 = 10,
-    NvKmsSurfaceMemoryFormatR16G16B16A16     = 11,
-    NvKmsSurfaceMemoryFormatRF32GF32BF32AF32 = 12,
-};
-
-static inline NvU8 nvKmsSurfaceMemoryFormatToBytesPerPixel(
-    enum NvKmsSurfaceMemoryFormat format)
-{
-    switch (format) {
-    case NvKmsSurfaceMemoryFormatI8:
-        return 1;
-    case NvKmsSurfaceMemoryFormatA1R5G5B5:
-    case NvKmsSurfaceMemoryFormatX1R5G5B5:
-    case NvKmsSurfaceMemoryFormatR5G6B5:
-        return 2;
-    case NvKmsSurfaceMemoryFormatA8R8G8B8:
-    case NvKmsSurfaceMemoryFormatX8R8G8B8:
-    case NvKmsSurfaceMemoryFormatA8B8G8R8:
-    case NvKmsSurfaceMemoryFormatX8B8G8R8:
-    case NvKmsSurfaceMemoryFormatA2B10G10R10:
-    case NvKmsSurfaceMemoryFormatX2B10G10R10:
-        return 4;
-    case NvKmsSurfaceMemoryFormatRF16GF16BF16AF16:
-    case NvKmsSurfaceMemoryFormatR16G16B16A16:
-        return 8;
-    case NvKmsSurfaceMemoryFormatRF32GF32BF32AF32:
-        return 16;
-    }
-
-    return 0;
-}
-
-static inline NvU8 nvKmsSurfaceMemoryFormatToBitsPerPixel(
-    enum NvKmsSurfaceMemoryFormat format)
-{
-    return nvKmsSurfaceMemoryFormatToBytesPerPixel(format) * 8;
-}
-
-static inline NvU8 nvKmsSurfaceMemoryFormatToDepth(
-    enum NvKmsSurfaceMemoryFormat format)
-{
-    switch (format) {
-    case NvKmsSurfaceMemoryFormatI8:
-        return 8;
-    case NvKmsSurfaceMemoryFormatX1R5G5B5:
-        return 15;
-    case NvKmsSurfaceMemoryFormatA1R5G5B5:
-    case NvKmsSurfaceMemoryFormatR5G6B5:
-        return 16;
-    case NvKmsSurfaceMemoryFormatX8R8G8B8:
-    case NvKmsSurfaceMemoryFormatX8B8G8R8:
-        return 24;
-    case NvKmsSurfaceMemoryFormatX2B10G10R10:
-        return 30;
-    case NvKmsSurfaceMemoryFormatA8R8G8B8:
-    case NvKmsSurfaceMemoryFormatA8B8G8R8:
-    case NvKmsSurfaceMemoryFormatA2B10G10R10:
-        return 32;
-    case NvKmsSurfaceMemoryFormatRF16GF16BF16AF16:
-    case NvKmsSurfaceMemoryFormatR16G16B16A16:
-        return 64;
-    case NvKmsSurfaceMemoryFormatRF32GF32BF32AF32:
-        return 128;
-    }
-
-    return 0;
-}
-
-static inline const char *NvKmsSurfaceMemoryFormatToString(
-    const enum NvKmsSurfaceMemoryFormat format)
-{
-    switch (format) {
-    default:
-        /* Default return "Unknown" */
-        break;
-
-    case NvKmsSurfaceMemoryFormatI8:
-        return "I8";
-    case NvKmsSurfaceMemoryFormatA1R5G5B5:
-        return "A1R5G5B5";
-    case NvKmsSurfaceMemoryFormatX1R5G5B5:
-        return "X1R5G5B5";
-    case NvKmsSurfaceMemoryFormatR5G6B5:
-        return "R5G6B5";
-    case NvKmsSurfaceMemoryFormatA8R8G8B8:
-        return "A8R8G8B8";
-    case NvKmsSurfaceMemoryFormatX8R8G8B8:
-        return "X8R8G8B8";
-    case NvKmsSurfaceMemoryFormatA2B10G10R10:
-        return "A2B10G10R10";
-    case NvKmsSurfaceMemoryFormatX2B10G10R10:
-        return "X2B10G10R10";
-    case NvKmsSurfaceMemoryFormatA8B8G8R8:
-        return "A8B8G8R8";
-    case NvKmsSurfaceMemoryFormatX8B8G8R8:
-        return "X8B8G8R8";
-    case NvKmsSurfaceMemoryFormatRF16GF16BF16AF16:
-        return "RF16_GF16_BF16_AF16";
-    case NvKmsSurfaceMemoryFormatR16G16B16A16:
-        return "R16G16B16A16";
-    case NvKmsSurfaceMemoryFormatRF32GF32BF32AF32:
-        return "RF32_GF32_BF32_AF32";
-    }
-
-    return "Unknown";
-}
 
 /*!
  * Description of Notifiers and Semaphores (Non-isochronous (NISO) surfaces).
@@ -310,5 +194,77 @@ struct NvKmsCscMatrix {
         { 0, 0x10000, 0, 0 },       \
         { 0, 0, 0x10000, 0 }        \
     }}
+
+/*!
+ * Composition modes used for surfaces in general.
+ * The various types of composition are:
+ *
+ * Alpha blending: aka opacity, which could be specified
+ * for a surface in its entirety, or on a per-pixel basis.
+ *
+ * Non-premultiplied: alpha value applies to source pixel,
+ * and also counter-weighs the destination pixel.
+ * Premultiplied: alpha already applied to source pixel,
+ * so it only counter-weighs the destination pixel.
+ *
+ * Opaque: source pixels are opaque regardless of alpha,
+ * and will occlude the destination pixel.
+ *
+ * Color keying: use a color key structure to decide
+ * the criteria for matching and compositing.
+ * (See NVColorKey below.)
+ */
+enum NvKmsCompositionMode {
+    /*!
+     * Modes that use per-pixel alpha provided by client,
+     * and the surfaceAlpha must be set to 0.
+     */
+    NVKMS_COMPOSITION_MODE_PREMULT_ALPHA,
+    NVKMS_COMPOSITION_MODE_NON_PREMULT_ALPHA,
+    NVKMS_COMPOSITION_MODE_ADDITIVE,
+
+    /*!
+     * Modes that use no other parameters.
+     */
+    NVKMS_COMPOSITION_MODE_OPAQUE,
+
+    /*!
+     * These modes use the colorKey structure.
+     */
+    NVKMS_COMPOSITION_MODE_SOURCE_COLOR_KEYING,
+    NVKMS_COMPOSITION_MODE_DESTINATION_COLOR_KEYING,
+
+    /*!
+     * These use both the surface-wide and per-pixel alpha values.
+     * surfaceAlpha is treated as numerator ranging from 0 to 255
+     * of a fraction whose denominator is 255.
+     */
+    NVKMS_COMPOSITION_MODE_PREMULT_SURFACE_ALPHA,
+    NVKMS_COMPOSITION_MODE_NON_PREMULT_SURFACE_ALPHA,
+};
+
+/*!
+ * Abstract description of a color key.
+ *
+ * a, r, g, and b are component values in the same width as the framebuffer
+ * values being scanned out.
+ *
+ * match[ARGB] defines whether that component is considered when matching the
+ * color key -- TRUE means that the value of the corresponding component must
+ * match the given value for the given pixel to be considered a 'key match';
+ * FALSE means that the value of that component is not a key match criterion.
+ */
+typedef struct {
+    NvU16 a, r, g, b;
+    NvBool matchA, matchR, matchG, matchB;
+} NVColorKey;
+
+struct NvKmsCompositionParams {
+    enum NvKmsCompositionMode compMode;
+    union {
+        NvU8 surfaceAlpha;  /* Applies to all pixels of entire surface */
+        NVColorKey colorKey;
+    };
+};
 
 #endif /* NVKMS_API_TYPES_H */

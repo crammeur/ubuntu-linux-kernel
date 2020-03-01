@@ -236,8 +236,10 @@ static inline void kmem_cache_destroy_safe(struct kmem_cache **ppCache)
 {
     if (ppCache)
     {
-        if (*ppCache)
+        if (*ppCache) {
             kmem_cache_destroy(*ppCache);
+            NV_KMEM_CACHE_DESTROY_FLUSH();
+        }
         *ppCache = NULL;
     }
 }

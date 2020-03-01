@@ -39,6 +39,10 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 
+#if defined(NV_DRM_ALPHA_BLENDING_AVAILABLE)
+#include <drm/drm_blend.h>
+#endif
+
 static const u32 nv_default_supported_plane_drm_formats[] = {
     DRM_FORMAT_ARGB1555,
     DRM_FORMAT_XRGB1555,
@@ -62,24 +66,25 @@ static void nv_drm_plane_destroy(struct drm_plane *plane)
 }
 
 static inline void
-plane_req_config_disable(struct NvKmsKapiPlaneRequestedConfig *req_config)
+plane_req_config_disable(struct NvKmsKapiLayerRequestedConfig *req_config)
 {
     req_config->config.surface = NULL;
     req_config->flags.surfaceChanged = NV_TRUE;
 }
 
 static void
-plane_req_config_update(struct drm_plane_state *plane_state,
-                        struct NvKmsKapiPlaneRequestedConfig *req_config)
+plane_req_config_update(struct drm_plane *plane,
+                        struct drm_plane_state *plane_state,
+                        struct NvKmsKapiLayerRequestedConfig *req_config)
 {
-    struct NvKmsKapiPlaneConfig old_config = req_config->config;
+    struct NvKmsKapiLayerConfig old_config = req_config->config;
 
     if (plane_state->fb == NULL) {
         plane_req_config_disable(req_config);
         return;
     }
 
-    *req_config = (struct NvKmsKapiPlaneRequestedConfig) {
+    *req_config = (struct NvKmsKapiLayerRequestedConfig) {
         .config = {
             .surface = to_nv_framebuffer(plane_state->fb)->pSurface,
 
@@ -95,6 +100,60 @@ plane_req_config_update(struct drm_plane_state *plane_state,
             .dstHeight = plane_state->crtc_h,
         },
     };
+
+
+#if defined(NV_DRM_ALPHA_BLENDING_AVAILABLE)
+    if (plane->blend_mode_property != NULL && plane->alpha_property != NULL) {
+
+        switch (plane_state->pixel_blend_mode) {
+            case DRM_MODE_BLEND_PREMULTI:
+                req_config->config.compParams.compMode =
+                    NVKMS_COMPOSITION_MODE_PREMULT_SURFACE_ALPHA;
+                break;
+            case DRM_MODE_BLEND_COVERAGE:
+                req_config->config.compParams.compMode =
+                    NVKMS_COMPOSITION_MODE_NON_PREMULT_SURFACE_ALPHA;
+                break;
+            default:
+                /*
+                 * We should not hit this, because
+                 * plane_state->pixel_blend_mode should only have values
+                 * registered in
+                 * __nv_drm_cursor_create_alpha_blending_properties().
+                 */
+                WARN_ON("Unsupported blending mode");
+                break;
+
+        }
+
+        req_config->config.compParams.surfaceAlpha =
+            plane_state->alpha >> 8;
+
+    } else if (plane->blend_mode_property != NULL) {
+
+        switch (plane_state->pixel_blend_mode) {
+            case DRM_MODE_BLEND_PREMULTI:
+                req_config->config.compParams.compMode =
+                    NVKMS_COMPOSITION_MODE_PREMULT_ALPHA;
+                break;
+            case DRM_MODE_BLEND_COVERAGE:
+                req_config->config.compParams.compMode =
+                    NVKMS_COMPOSITION_MODE_NON_PREMULT_ALPHA;
+                break;
+            default:
+                /*
+                 * We should not hit this, because
+                 * plane_state->pixel_blend_mode should only have values
+                 * registered in
+                 * __nv_drm_cursor_create_alpha_blending_properties().
+                 */
+                WARN_ON("Unsupported blending mode");
+                break;
+
+        }
+
+    }
+#endif
 
     /*
      * Unconditionally mark the surface as changed, even if nothing changed,
@@ -135,7 +194,7 @@ static int nv_drm_plane_atomic_check(struct drm_plane *plane,
     int i;
     struct drm_crtc *crtc;
     struct drm_crtc_state *crtc_state;
-    NvKmsKapiPlaneType type;
+    NvKmsKapiLayerType type;
 
     if (NV_DRM_WARN(!drm_plane_type_to_nvkms_plane_type(plane->type, &type))) {
         goto done;
@@ -145,8 +204,8 @@ static int nv_drm_plane_atomic_check(struct drm_plane *plane,
         struct nv_drm_crtc_state *nv_crtc_state = to_nv_crtc_state(crtc_state);
         struct NvKmsKapiHeadRequestedConfig *head_req_config =
             &nv_crtc_state->req_config;
-        struct NvKmsKapiPlaneRequestedConfig *plane_requested_config =
-            &head_req_config->planeRequestedConfig[type];
+        struct NvKmsKapiLayerRequestedConfig *plane_requested_config =
+            &head_req_config->layerRequestedConfig[type];
 
         if (plane->state->crtc == crtc &&
             plane->state->crtc != plane_state->crtc) {
@@ -155,7 +214,8 @@ static int nv_drm_plane_atomic_check(struct drm_plane *plane,
         }
 
         if (plane_state->crtc == crtc) {
-            plane_req_config_update(plane_state,
+            plane_req_config_update(plane,
+                                    plane_state,
                                     plane_requested_config);
         }
     }
@@ -225,9 +285,9 @@ static inline void nv_drm_crtc_duplicate_req_head_modeset_config(
         .modeSetConfig = old->modeSetConfig,
     };
 
-    for (i = 0; i < ARRAY_SIZE(old->planeRequestedConfig); i++) {
-        new->planeRequestedConfig[i] = (struct NvKmsKapiPlaneRequestedConfig) {
-            .config = old->planeRequestedConfig[i].config,
+    for (i = 0; i < ARRAY_SIZE(old->layerRequestedConfig); i++) {
+        new->layerRequestedConfig[i] = (struct NvKmsKapiLayerRequestedConfig) {
+            .config = old->layerRequestedConfig[i].config,
         };
     }
 }
@@ -547,8 +607,35 @@ failed:
     return ERR_PTR(ret);
 }
 
+static void
+__nv_drm_cursor_create_alpha_blending_properties(struct drm_plane *cursor_plane,
+                                                 NvU32 validCompModes)
+{
+#if defined(NV_DRM_ALPHA_BLENDING_AVAILABLE)
+    if ((validCompModes &
+         BIT(NVKMS_COMPOSITION_MODE_PREMULT_SURFACE_ALPHA)) != 0x0 &&
+        (validCompModes &
+         BIT(NVKMS_COMPOSITION_MODE_NON_PREMULT_SURFACE_ALPHA)) != 0x0) {
+
+        drm_plane_create_alpha_property(cursor_plane);
+        drm_plane_create_blend_mode_property(cursor_plane,
+                                             BIT(DRM_MODE_BLEND_PREMULTI) |
+                                             BIT(DRM_MODE_BLEND_COVERAGE));
+    } else if ((validCompModes &
+                BIT(NVKMS_COMPOSITION_MODE_PREMULT_ALPHA)) != 0x0 &&
+               (validCompModes &
+                BIT(NVKMS_COMPOSITION_MODE_NON_PREMULT_ALPHA)) != 0x0) {
+
+        drm_plane_create_blend_mode_property(cursor_plane,
+                                             BIT(DRM_MODE_BLEND_PREMULTI) |
+                                             BIT(DRM_MODE_BLEND_COVERAGE));
+   }
+#endif
+}
+
 void nv_drm_enumerate_crtcs_and_planes(struct nv_drm_device *nv_dev,
-                                       unsigned int num_heads)
+                                       unsigned int num_heads,
+                                       NvU32 validCursorCompitionModes)
 {
     unsigned int i;
 
@@ -579,6 +666,10 @@ void nv_drm_enumerate_crtcs_and_planes(struct nv_drm_device *nv_dev,
                 nv_dev,
                 "Failed to create cursor plane for head %u, error = %ld",
                 i, PTR_ERR(cursor_plane));
+        } else {
+            __nv_drm_cursor_create_alpha_blending_properties(
+                cursor_plane,
+                validCursorCompitionModes);
         }
 
         if (primary_plane != NULL) {

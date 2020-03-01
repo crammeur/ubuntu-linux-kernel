@@ -1,5 +1,5 @@
 /*******************************************************************************
-    Copyright (c) 2013-2016 NVIDIA Corporation
+    Copyright (c) 2013-2019 NVIDIA Corporation
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to
@@ -276,6 +276,9 @@ NV_STATUS UvmIsPageableMemoryAccessSupportedOnGpu(const NvProcessorUuid *gpuUuid
 //     NV_ERR_NO_MEMORY:
 //         Internal memory allocation failed.
 //
+//     NV_ERR_INSUFFICIENT_RESOURCES
+//         Internal client or object allocation failed.
+//
 //     NV_ERR_INVALID_DEVICE:
 //         The GPU referred to by pGpuUuid has already been registered by this
 //         process.
@@ -300,6 +303,33 @@ NV_STATUS UvmIsPageableMemoryAccessSupportedOnGpu(const NvProcessorUuid *gpuUuid
 //
 //------------------------------------------------------------------------------
 NV_STATUS UvmRegisterGpu(const NvProcessorUuid *gpuUuid);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //------------------------------------------------------------------------------
 // UvmUnregisterGpu

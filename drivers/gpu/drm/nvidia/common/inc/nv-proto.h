@@ -26,15 +26,6 @@ void        nv_acpi_unregister_notifier (nv_linux_state_t *);
 int         nv_acpi_init                (void);
 int         nv_acpi_uninit              (void);
 
-irqreturn_t nv_gvi_kern_isr             (int, void *);
-
-void        nv_gvi_kern_bh              (struct work_struct *);
-
-#if defined(CONFIG_PM)
-NV_STATUS   nv_gvi_suspend              (nv_state_t *, nv_pm_action_t);
-NV_STATUS   nv_gvi_resume               (nv_state_t *, nv_pm_action_t);
-#endif
-
 NvU8        nv_find_pci_capability      (struct pci_dev *, NvU8);
 void *      nv_alloc_file_private       (void);
 void        nv_free_file_private        (nv_file_private_t *);
@@ -105,4 +96,5 @@ NvBool        nv_lock_init_locks(nvidia_stack_t *, nv_state_t *);
 void          nv_lock_destroy_locks(nvidia_stack_t *, nv_state_t *);
 void          nv_linux_add_device_locked(nv_linux_state_t *);
 void          nv_linux_remove_device_locked(nv_linux_state_t *);
+NvBool        nv_acpi_upstreamport_power_resource_method_present(struct pci_dev *);
 #endif /* _NV_PROTO_H_ */

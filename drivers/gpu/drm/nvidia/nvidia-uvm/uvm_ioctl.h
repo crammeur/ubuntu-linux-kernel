@@ -1,5 +1,5 @@
 /*******************************************************************************
-    Copyright (c) 2013 NVidia Corporation
+    Copyright (c) 2013-2019 NVidia Corporation
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to
@@ -559,6 +559,13 @@ typedef struct
     NvProcessorUuid gpu_uuid;    // IN
     NvBool          numaEnabled; // OUT
     NvS32           numaNodeId;  // OUT
+    NvS32           rmCtrlFd;    // IN
+    NvHandle        hClient;     // IN
+
+
+
+    NvHandle        hObject;     // IN
+
     NV_STATUS       rmStatus;    // OUT
 } UVM_REGISTER_GPU_PARAMS;
 

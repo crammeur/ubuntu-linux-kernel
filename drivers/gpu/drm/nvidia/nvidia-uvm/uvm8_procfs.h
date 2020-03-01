@@ -26,8 +26,6 @@
 
 #include "uvm8_extern_decl.h"
 #include "uvm8_forward_decl.h"
-#include "uvm8_thread_context.h"
-#include "uvm8_api.h"
 #include "uvm_linux.h"
 #include "nv-procfs.h"
 #include "conftest.h"
@@ -57,8 +55,8 @@ struct proc_dir_entry *uvm_procfs_get_cpu_base_dir(void);
 
 void uvm_procfs_destroy_entry(struct proc_dir_entry *entry);
 
-int uvm_procfs_open_callback_entry(void);
-void uvm_procfs_close_callback_entry(void);
+int uvm_procfs_open_callback(void);
+void uvm_procfs_close_callback(void);
 
 // Helper for printing into a seq_file if it's not NULL and UVM_DBG_PRINT
 // otherwise. Useful when sharing a print function for both debug output and
@@ -73,9 +71,7 @@ void uvm_procfs_close_callback_entry(void);
 
 #if defined(CONFIG_PROC_FS)
 #define UVM_DEFINE_SINGLE_PROCFS_FILE(name) \
-    NV_DEFINE_SINGLE_PROCFS_FILE(name, \
-                                 uvm_procfs_open_callback_entry, \
-                                 uvm_procfs_close_callback_entry)
+    NV_DEFINE_SINGLE_PROCFS_FILE(name, uvm_procfs_open_callback, uvm_procfs_close_callback)
 #endif
 
 #endif // __UVM8_PROCFS_H__

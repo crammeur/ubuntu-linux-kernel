@@ -440,6 +440,7 @@ static void uvm_vm_close_managed(struct vm_area_struct *vma)
         // avoid spurious MMU faults in the system log. That involves making RM
         // calls, so we have to do that with the VA space lock in read mode.
         uvm_va_space_down_read_rm(va_space);
+        UVM_ASSERT(uvm_va_space_initialized(va_space) == NV_OK);
         is_uvm_teardown = va_space->initialization_flags & UVM_INIT_FLAGS_DISABLE_TEARDOWN_ON_PROCESS_EXIT;
         if (!is_uvm_teardown && !atomic_read(&va_space->user_channels_stopped))
             uvm_va_space_stop_all_user_channels(va_space);
@@ -744,6 +745,10 @@ static int uvm_mmap(struct file *filp, struct vm_area_struct *vma)
     if (status != NV_OK)
         return -nv_status_to_errno(status);
 
+    status = uvm_va_space_initialized(va_space);
+    if (status != NV_OK)
+        return -EBADFD;
+
     // UVM mappings are required to set offset == VA. This simplifies things
     // since we don't have to worry about address aliasing (except for fork,
     // handled separately) and it makes unmap_mapping_range simpler.
@@ -861,7 +866,7 @@ static NV_STATUS uvm_api_initialize(UVM_INITIALIZE_PARAMS *params, struct file *
     uvm_down_write_mmap_sem(&current->mm->mmap_sem);
     uvm_va_space_down_write(va_space);
 
-    if (va_space->initialized) {
+    if (atomic_read(&va_space->initialized)) {
         // Already initialized - check if parameters match
         if (params->flags != va_space->initialization_flags)
             status = NV_ERR_INVALID_ARGUMENT;
@@ -870,8 +875,12 @@ static NV_STATUS uvm_api_initialize(UVM_INITIALIZE_PARAMS *params, struct file *
         va_space->initialization_flags = params->flags;
 
         status = uvm_hmm_mirror_register(va_space);
-        if (status == NV_OK)
-            va_space->initialized = true;
+        if (status == NV_OK) {
+            // Use release semantics to match the acquire semantics in
+            // uvm_va_space_initialized. See that function for details. All
+            // initialization must be complete by this point.
+            atomic_set_release(&va_space->initialized, 1);
+        }
     }
 
     uvm_va_space_up_write(va_space);
@@ -887,44 +896,45 @@ static long uvm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         case UVM_DEINITIALIZE:
             return 0;
 
-        UVM_ROUTE_CMD_STACK(UVM_INITIALIZE,                     uvm_api_initialize);
-        UVM_ROUTE_CMD_STACK(UVM_PAGEABLE_MEM_ACCESS,            uvm_api_pageable_mem_access);
-        UVM_ROUTE_CMD_STACK(UVM_PAGEABLE_MEM_ACCESS_ON_GPU,     uvm_api_pageable_mem_access_on_gpu);
-        UVM_ROUTE_CMD_STACK(UVM_REGISTER_GPU,                   uvm_api_register_gpu);
-        UVM_ROUTE_CMD_STACK(UVM_UNREGISTER_GPU,                 uvm_api_unregister_gpu);
-        UVM_ROUTE_CMD_STACK(UVM_CREATE_RANGE_GROUP,             uvm_api_create_range_group);
-        UVM_ROUTE_CMD_STACK(UVM_DESTROY_RANGE_GROUP,            uvm_api_destroy_range_group);
-        UVM_ROUTE_CMD_STACK(UVM_ENABLE_PEER_ACCESS,             uvm_api_enable_peer_access);
-        UVM_ROUTE_CMD_STACK(UVM_DISABLE_PEER_ACCESS,            uvm_api_disable_peer_access);
-        UVM_ROUTE_CMD_STACK(UVM_SET_RANGE_GROUP,                uvm_api_set_range_group);
-        UVM_ROUTE_CMD_ALLOC(UVM_MAP_EXTERNAL_ALLOCATION,        uvm_api_map_external_allocation);
-        UVM_ROUTE_CMD_STACK(UVM_FREE,                           uvm_api_free);
-        UVM_ROUTE_CMD_STACK(UVM_PREVENT_MIGRATION_RANGE_GROUPS, uvm_api_prevent_migration_range_groups);
-        UVM_ROUTE_CMD_STACK(UVM_ALLOW_MIGRATION_RANGE_GROUPS,   uvm_api_allow_migration_range_groups);
-        UVM_ROUTE_CMD_STACK(UVM_SET_PREFERRED_LOCATION,         uvm_api_set_preferred_location);
-        UVM_ROUTE_CMD_STACK(UVM_UNSET_PREFERRED_LOCATION,       uvm_api_unset_preferred_location);
-        UVM_ROUTE_CMD_STACK(UVM_SET_ACCESSED_BY,                uvm_api_set_accessed_by);
-        UVM_ROUTE_CMD_STACK(UVM_UNSET_ACCESSED_BY,              uvm_api_unset_accessed_by);
-        UVM_ROUTE_CMD_STACK(UVM_REGISTER_GPU_VASPACE,           uvm_api_register_gpu_va_space);
-        UVM_ROUTE_CMD_STACK(UVM_UNREGISTER_GPU_VASPACE,         uvm_api_unregister_gpu_va_space);
-        UVM_ROUTE_CMD_STACK(UVM_REGISTER_CHANNEL,               uvm_api_register_channel);
-        UVM_ROUTE_CMD_STACK(UVM_UNREGISTER_CHANNEL,             uvm_api_unregister_channel);
-        UVM_ROUTE_CMD_STACK(UVM_ENABLE_READ_DUPLICATION,        uvm_api_enable_read_duplication);
-        UVM_ROUTE_CMD_STACK(UVM_DISABLE_READ_DUPLICATION,       uvm_api_disable_read_duplication);
-        UVM_ROUTE_CMD_STACK(UVM_MIGRATE,                        uvm_api_migrate);
-        UVM_ROUTE_CMD_STACK(UVM_ENABLE_SYSTEM_WIDE_ATOMICS,     uvm_api_enable_system_wide_atomics);
-        UVM_ROUTE_CMD_STACK(UVM_DISABLE_SYSTEM_WIDE_ATOMICS,    uvm_api_disable_system_wide_atomics);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_READ_PROCESS_MEMORY,      uvm_api_tools_read_process_memory);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_WRITE_PROCESS_MEMORY,     uvm_api_tools_write_process_memory);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_GET_PROCESSOR_UUID_TABLE, uvm_api_tools_get_processor_uuid_table);
-        UVM_ROUTE_CMD_STACK(UVM_MAP_DYNAMIC_PARALLELISM_REGION, uvm_api_map_dynamic_parallelism_region);
-        UVM_ROUTE_CMD_STACK(UVM_UNMAP_EXTERNAL_ALLOCATION,      uvm_api_unmap_external_allocation);
-        UVM_ROUTE_CMD_STACK(UVM_MIGRATE_RANGE_GROUP,            uvm_api_migrate_range_group);
-        UVM_ROUTE_CMD_STACK(UVM_TOOLS_FLUSH_EVENTS,             uvm_api_tools_flush_events);
-        UVM_ROUTE_CMD_ALLOC(UVM_ALLOC_SEMAPHORE_POOL,           uvm_api_alloc_semaphore_pool);
-        UVM_ROUTE_CMD_STACK(UVM_CLEAN_UP_ZOMBIE_RESOURCES,      uvm_api_clean_up_zombie_resources);
-        UVM_ROUTE_CMD_STACK(UVM_POPULATE_PAGEABLE,              uvm_api_populate_pageable);
-        UVM_ROUTE_CMD_STACK(UVM_VALIDATE_VA_RANGE,              uvm_api_validate_va_range);
+        UVM_ROUTE_CMD_STACK_NO_INIT_CHECK(UVM_INITIALIZE,                  uvm_api_initialize);
+
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_PAGEABLE_MEM_ACCESS,            uvm_api_pageable_mem_access);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_PAGEABLE_MEM_ACCESS_ON_GPU,     uvm_api_pageable_mem_access_on_gpu);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_REGISTER_GPU,                   uvm_api_register_gpu);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_UNREGISTER_GPU,                 uvm_api_unregister_gpu);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_CREATE_RANGE_GROUP,             uvm_api_create_range_group);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_DESTROY_RANGE_GROUP,            uvm_api_destroy_range_group);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_ENABLE_PEER_ACCESS,             uvm_api_enable_peer_access);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_DISABLE_PEER_ACCESS,            uvm_api_disable_peer_access);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_SET_RANGE_GROUP,                uvm_api_set_range_group);
+        UVM_ROUTE_CMD_ALLOC_INIT_CHECK(UVM_MAP_EXTERNAL_ALLOCATION,        uvm_api_map_external_allocation);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_FREE,                           uvm_api_free);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_PREVENT_MIGRATION_RANGE_GROUPS, uvm_api_prevent_migration_range_groups);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_ALLOW_MIGRATION_RANGE_GROUPS,   uvm_api_allow_migration_range_groups);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_SET_PREFERRED_LOCATION,         uvm_api_set_preferred_location);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_UNSET_PREFERRED_LOCATION,       uvm_api_unset_preferred_location);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_SET_ACCESSED_BY,                uvm_api_set_accessed_by);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_UNSET_ACCESSED_BY,              uvm_api_unset_accessed_by);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_REGISTER_GPU_VASPACE,           uvm_api_register_gpu_va_space);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_UNREGISTER_GPU_VASPACE,         uvm_api_unregister_gpu_va_space);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_REGISTER_CHANNEL,               uvm_api_register_channel);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_UNREGISTER_CHANNEL,             uvm_api_unregister_channel);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_ENABLE_READ_DUPLICATION,        uvm_api_enable_read_duplication);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_DISABLE_READ_DUPLICATION,       uvm_api_disable_read_duplication);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_MIGRATE,                        uvm_api_migrate);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_ENABLE_SYSTEM_WIDE_ATOMICS,     uvm_api_enable_system_wide_atomics);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_DISABLE_SYSTEM_WIDE_ATOMICS,    uvm_api_disable_system_wide_atomics);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_TOOLS_READ_PROCESS_MEMORY,      uvm_api_tools_read_process_memory);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_TOOLS_WRITE_PROCESS_MEMORY,     uvm_api_tools_write_process_memory);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_TOOLS_GET_PROCESSOR_UUID_TABLE, uvm_api_tools_get_processor_uuid_table);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_MAP_DYNAMIC_PARALLELISM_REGION, uvm_api_map_dynamic_parallelism_region);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_UNMAP_EXTERNAL_ALLOCATION,      uvm_api_unmap_external_allocation);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_MIGRATE_RANGE_GROUP,            uvm_api_migrate_range_group);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_TOOLS_FLUSH_EVENTS,             uvm_api_tools_flush_events);
+        UVM_ROUTE_CMD_ALLOC_INIT_CHECK(UVM_ALLOC_SEMAPHORE_POOL,           uvm_api_alloc_semaphore_pool);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_CLEAN_UP_ZOMBIE_RESOURCES,      uvm_api_clean_up_zombie_resources);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_POPULATE_PAGEABLE,              uvm_api_populate_pageable);
+        UVM_ROUTE_CMD_STACK_INIT_CHECK(UVM_VALIDATE_VA_RANGE,              uvm_api_validate_va_range);
     }
 
     // Try the test ioctls if none of the above matched

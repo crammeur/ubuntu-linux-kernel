@@ -14,6 +14,7 @@
 
 #include "nv-gpu-info.h"
 #include "nvkms-api-types.h"
+#include "nvkms-format.h"
 
 #define __NVKMS_KAPI_H__
 
@@ -109,6 +110,7 @@ struct NvKmsKapiDeviceResourcesInfo {
     NvKmsKapiConnector connectorHandles[NVKMS_KAPI_MAX_CONNECTORS];
 
     struct {
+        NvU32 validCursorCompositionModes;
 
         NvU32 minWidthInPixels;
         NvU32 maxWidthInPixels;
@@ -125,14 +127,14 @@ struct NvKmsKapiDeviceResourcesInfo {
 
 };
 
-typedef enum NvKmsKapiPlaneTypeRec {
-    NVKMS_KAPI_PLANE_PRIMARY = 0,
-    NVKMS_KAPI_PLANE_CURSOR  = 1,
-    NVKMS_KAPI_PLANE_OVERLAY = 2,
-    NVKMS_KAPI_PLANE_MAX     = 3,
-} NvKmsKapiPlaneType;
+typedef enum NvKmsKapiLayerTypeRec {
+    NVKMS_KAPI_LAYER_PRIMARY = 0,
+    NVKMS_KAPI_LAYER_CURSOR  = 1,
+    NVKMS_KAPI_LAYER_OVERLAY = 2,
+    NVKMS_KAPI_LAYER_MAX     = 3,
+} NvKmsKapiLayerType;
 
-#define NVKMS_KAPI_PLANE_MASK(planeType) (1 << (planeType))
+#define NVKMS_KAPI_LAYER_MASK(layerType) (1 << (layerType))
 
 typedef enum NvKmsKapiMappingTypeRec {
     NVKMS_KAPI_MAPPING_TYPE_USER   = 1,
@@ -176,8 +178,9 @@ struct NvKmsKapiStaticDisplayInfo {
 
 };
 
-struct NvKmsKapiPlaneConfig {
+struct NvKmsKapiLayerConfig {
     struct NvKmsKapiSurface *surface;
+    struct NvKmsCompositionParams compParams;
 
     NvU16 srcX, srcY;
     NvU16 srcWidth, srcHeight;
@@ -186,8 +189,8 @@ struct NvKmsKapiPlaneConfig {
     NvU16 dstWidth, dstHeight;
 };
 
-struct NvKmsKapiPlaneRequestedConfig {
-    struct NvKmsKapiPlaneConfig config;
+struct NvKmsKapiLayerRequestedConfig {
+    struct NvKmsKapiLayerConfig config;
     struct {
         NvBool surfaceChanged : 1;
         NvBool srcXYChanged   : 1;
@@ -230,8 +233,8 @@ struct NvKmsKapiHeadRequestedConfig {
         NvBool modeChanged     : 1;
     } flags;
 
-    struct NvKmsKapiPlaneRequestedConfig
-        planeRequestedConfig[NVKMS_KAPI_PLANE_MAX];
+    struct NvKmsKapiLayerRequestedConfig
+        layerRequestedConfig[NVKMS_KAPI_LAYER_MAX];
 };
 
 struct NvKmsKapiRequestedModeSetConfig {
@@ -250,7 +253,7 @@ struct NvKmsKapiEventDynamicDisplayConnected {
 
 struct NvKmsKapiEventFlipOccurred {
     NvU32 head;
-    NvKmsKapiPlaneType plane;
+    NvKmsKapiLayerType layer;
 };
 
 struct NvKmsKapiEvent {
@@ -769,10 +772,10 @@ struct NvKmsKapiFunctionsTable {
      *
      * \param  [in]  head     A head returned by getDeviceResourcesInfo().
      *
-     * \param  [in]  plane    A plane type.
+     * \param  [in]  layer    A layer type.
      *
      * \param  [out] pending  Return TRUE if head has pending flip for
-     *                        given plane.
+     *                        given layer.
      *
      * \return NV_TRUE on success, NV_FALSE on failure.
      */
@@ -780,7 +783,7 @@ struct NvKmsKapiFunctionsTable {
     (
         const struct NvKmsKapiDevice *device,
         const NvU32 head,
-        const NvKmsKapiPlaneType plane,
+        const NvKmsKapiLayerType layer,
         NvBool *pending
     );
 

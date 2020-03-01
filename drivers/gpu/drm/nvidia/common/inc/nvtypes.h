@@ -11,7 +11,7 @@
 |*     tion and  internal comments to the code,  notices to the end user     *|
 |*     as follows:                                                           *|
 |*                                                                           *|
-|*       Copyright 1993-2018 NVIDIA, Corporation.  All rights reserved.      *|
+|*       Copyright 1993-2019 NVIDIA, Corporation.  All rights reserved.      *|
 |*                                                                           *|
 |*     NVIDIA, CORPORATION MAKES NO REPRESENTATION ABOUT THE SUITABILITY     *|
 |*     OF  THIS SOURCE  CODE  FOR ANY PURPOSE.  IT IS  PROVIDED  "AS IS"     *|
@@ -26,7 +26,7 @@
 |*     OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOURCE CODE.     *|
 |*                                                                           *|
 |*     U.S. Government  End  Users.   This source code  is a "commercial     *|
-|*     item,"  as that  term is  defined at  8 C.F.R. 2.101 (OCT 1995),     *|
+|*     item,"  as that  term is  defined at  8 C.F.R. 2.101 (OCT 1995),      *|
 |*     consisting  of "commercial  computer  software"  and  "commercial     *|
 |*     computer  software  documentation,"  as such  terms  are  used in     *|
 |*     48 C.F.R. 12.212 (SEPT 1995)  and is provided to the U.S. Govern-     *|
@@ -450,7 +450,7 @@ typedef NvS8  S008;
 typedef NvS16 S016;
 typedef NvS32 S032;
 #endif
-#if defined(MACOS) || defined(macintosh) || defined(__APPLE_CC__) || defined(NV_MODS) || defined(MINIRM) || defined(NV_UNIX) || defined (NV_QNX) || defined(NV_INTEGRITY) || defined(NV_HOS)
+#if defined(MACOS) || defined(macintosh) || defined(__APPLE_CC__) || defined(NV_MODS) || defined(MINIRM) || defined (NV_QNX) || defined(NV_INTEGRITY) || defined(NV_HOS)
 /* more obsolete stuff */
 /* need to provide these on macos9 and macosX */
 #if defined(__APPLE_CC__)  /* gross but Apple osX already claims ULONG */
@@ -574,19 +574,19 @@ typedef unsigned char *PUCHAR;
     #if defined(__GNUC__)
         #if (__GNUC__ > 3) || \
             ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 1) && (__GNUC_PATCHLEVEL__ >= 1))
-        #define NV_NOINLINE __attribute__((noinline))
+            #define NV_NOINLINE __attribute__((__noinline__))
         #endif
     #elif defined(__clang__)
         #if __has_attribute(noinline)
-        #define NV_NOINLINE __attribute__((noinline))
+        #define NV_NOINLINE __attribute__((__noinline__))
         #endif
     #elif defined(__arm) && (__ARMCC_VERSION >= 300000)
-        #define NV_NOINLINE __attribute__((noinline))
+        #define NV_NOINLINE __attribute__((__noinline__))
     #elif (defined(__SUNPRO_C) && (__SUNPRO_C >= 0x590)) ||\
             (defined(__SUNPRO_CC) && (__SUNPRO_CC >= 0x590))
-        #define NV_NOINLINE __attribute__((noinline))
+        #define NV_NOINLINE __attribute__((__noinline__))
     #elif defined (__INTEL_COMPILER)
-        #define NV_NOINLINE __attribute__((noinline))
+        #define NV_NOINLINE __attribute__((__noinline__))
     #endif
 
     #if !defined(NV_NOINLINE)
@@ -616,13 +616,13 @@ typedef unsigned char *PUCHAR;
         #elif defined(__GNUC__)
             // GCC 3.1 and beyond support the always_inline function attribute.
             #if (__GNUC__ > 3) || ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 1))
-            #define NV_FORCEINLINE __attribute__((always_inline)) __inline__
+            #define NV_FORCEINLINE __attribute__((__always_inline__)) __inline__
             #else
             #define NV_FORCEINLINE __inline__
             #endif
         #elif defined(__clang__)
             #if __has_attribute(always_inline)
-            #define NV_FORCEINLINE __attribute__((always_inline)) __inline__
+            #define NV_FORCEINLINE __attribute__((__always_inline__)) __inline__
             #else
             #define NV_FORCEINLINE __inline__
             #endif
@@ -650,13 +650,13 @@ typedef unsigned char *PUCHAR;
      */
     #if defined(__GNUC__) && defined(NV_UNIX)
         #if (__GNUC__ > 3) || ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))
-        #define NV_FORCERESULTCHECK __attribute__((warn_unused_result))
+        #define NV_FORCERESULTCHECK __attribute__((__warn_unused_result__))
         #else
         #define NV_FORCERESULTCHECK
         #endif
     #elif defined(__clang__)
         #if __has_attribute(warn_unused_result)
-        #define NV_FORCERESULTCHECK __attribute__((warn_unused_result))
+        #define NV_FORCERESULTCHECK __attribute__((__warn_unused_result__))
         #else
         #define NV_FORCERESULTCHECK
         #endif
@@ -665,7 +665,7 @@ typedef unsigned char *PUCHAR;
     #endif
 
     #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
-        #define NV_ATTRIBUTE_UNUSED __attribute__((unused))
+        #define NV_ATTRIBUTE_UNUSED __attribute__((__unused__))
     #else
         #define NV_ATTRIBUTE_UNUSED
     #endif
@@ -856,7 +856,7 @@ typedef NvUFXP64                                                   NvUFXP52_12;
  * Macros representing the single-precision IEEE 754 floating point format for
  * "binary32", also known as "single" and "float".
  *
- * http://en.wikipedia.org/wiki/Single_precision_floating-point_format
+ * Single precision floating point format wiki [1]
  *
  * _SIGN
  *     Single bit representing the sign of the number.
@@ -875,6 +875,7 @@ typedef NvUFXP64                                                   NvUFXP52_12;
  *         2^(_EXPONENT - _EXPONENT_BIAS) *
  *         (1 + _MANTISSA / (1 << 23))
  */
+// [1] : http://en.wikipedia.org/wiki/Single_precision_floating-point_format
 #define NV_TYPES_SINGLE_SIGN                                               31:31
 #define NV_TYPES_SINGLE_SIGN_POSITIVE                                 0x00000000
 #define NV_TYPES_SINGLE_SIGN_NEGATIVE                                 0x00000001

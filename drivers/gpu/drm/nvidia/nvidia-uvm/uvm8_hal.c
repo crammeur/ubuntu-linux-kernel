@@ -46,6 +46,9 @@
 
 
 
+
+
+
 #define CE_OP_COUNT (sizeof(uvm_ce_hal_t) / sizeof(void *))
 #define HOST_OP_COUNT (sizeof(uvm_host_hal_t) / sizeof(void *))
 #define ARCH_OP_COUNT (sizeof(uvm_arch_hal_t) / sizeof(void *))
@@ -105,6 +108,14 @@ static uvm_hal_class_ops_t ce_table[] =
         .parent_id = VOLTA_DMA_COPY_A,
         .u.ce_ops = {},
     },
+
+
+
+
+
+
+
+
 
 
 

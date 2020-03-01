@@ -105,29 +105,19 @@ struct proc_dir_entry *uvm_procfs_get_cpu_base_dir()
     return uvm_proc_cpu;
 }
 
-static int uvm_procfs_open_callback(void)
+int uvm_procfs_open_callback(void)
 {
-    // TODO: Bug 2594854: The PM lock is held in between procfs open and close,
-    // triggering lock policy violation assertions:
-    //   -when leaving the open function, because a lock is still held.
-    //   -when releasing the lock in the close function, because there is no
-    //    record of the lock being held.
-    // Re-enable lock tracking once bug is fixed.
-    return uvm_down_read_trylock_no_tracking(&g_uvm_global.pm.lock) ? 0 : -EAGAIN;
+    // Defer PM lock acquisition until the respective read() callback
+    // is invoked, to ensure the lock is acquired and released by
+    // the same thread.  Else the lock tracking validation code must
+    // be disabled for this lock, which is undesirable.
+    // See bug 2594854 for additional information.
+
+    return 0;
 }
 
-int uvm_procfs_open_callback_entry(void)
+void uvm_procfs_close_callback(void)
 {
-    UVM_ENTRY_RET(uvm_procfs_open_callback());
-}
-
-static void uvm_procfs_close_callback(void)
-{
-    // TODO: Bug 2594854: See comment in uvm_procfs_open_callback
-    uvm_up_read_no_tracking(&g_uvm_global.pm.lock);
-}
-
-void uvm_procfs_close_callback_entry(void)
-{
-    UVM_ENTRY_VOID(uvm_procfs_close_callback());
+    // The PM lock is acquired/released in the read() callback.  See
+    // uvm_procfs_open_callback().
 }

@@ -32,6 +32,7 @@
 #include "uvm8_forward_decl.h"
 #include "uvm8_mmu.h"
 #include "uvm_linux.h"
+#include "uvm_common.h"
 #include "nv-kref.h"
 #include "nv-linux.h"
 #include "uvm8_perf_events.h"
@@ -40,6 +41,7 @@
 #include "uvm8_va_block.h"
 #include "uvm8_hmm.h"
 #include "uvm8_test_ioctl.h"
+#include "uvm8_ats_ibm.h"
 
 // uvm_deferred_free_object provides a mechanism for building and later freeing
 // a list of objects which are owned by a VA space, but can't be freed while the
@@ -152,14 +154,9 @@ struct uvm_gpu_va_space_struct
         // requested when allocating this GPU VA space.
         bool enabled;
 
-#if defined(NV_PNV_NPU2_INIT_CONTEXT_PRESENT)
+#if UVM_KERNEL_SUPPORTS_IBM_ATS()
         struct npu_context *npu_context;
 #endif
-
-        // Association between the mm and the VA space. All GPU VA spaces in a
-        // VA space have the same ats_mm pointer. It is valid while the
-        // npu_context is valid.
-        uvm_ats_ibm_mm_t *ats_mm;
     } ats;
 };
 
@@ -348,8 +345,10 @@ struct uvm_va_space_struct
     // lock is held in write mode. Access using uvm_va_space_block_context().
     uvm_va_block_context_t va_block_context;
 
-    // UVM_INITIALIZE has been called
-    bool initialized;
+    // UVM_INITIALIZE has been called. Until this is set, the VA space is
+    // inoperable. Use uvm_va_space_initialized() to check whether the VA space
+    // has been initialized.
+    atomic_t initialized;
     NvU64 initialization_flags;
 
     struct
@@ -427,6 +426,33 @@ static bool uvm_va_space_processor_has_memory(uvm_va_space_t *va_space, uvm_proc
         return true;
 
     return uvm_va_space_get_gpu(va_space, id)->mem_info.size > 0;
+}
+
+// Checks if the VA space has been fully initialized (UVM_INITIALIZE has been
+// called). Returns NV_OK if so, NV_ERR_ILLEGAL_ACTION otherwise.
+//
+// Locking: No requirements. The VA space lock does NOT need to be held when
+//          calling this function, though it is allowed.
+static NV_STATUS uvm_va_space_initialized(uvm_va_space_t *va_space)
+{
+    // The common case by far is for the VA space to have already been
+    // initialized. This combined with the fact that some callers may never hold
+    // the VA space lock means we don't want the VA space lock to be taken to
+    // perform this check.
+    //
+    // Instead of locks, we rely on acquire/release memory ordering semantics.
+    // The release is done at the end of uvm_api_initialize() when the
+    // UVM_INITIALIZE ioctl completes. That opens the gate for any other
+    // threads.
+    //
+    // Using acquire semantics as opposed to a normal read will add slight
+    // overhead to every entry point on platforms with relaxed ordering. Should
+    // that overhead become noticeable we could have UVM_INITIALIZE use
+    // on_each_cpu to broadcast memory barriers.
+    if (likely(atomic_read_acquire(&va_space->initialized)))
+        return NV_OK;
+
+    return NV_ERR_ILLEGAL_ACTION;
 }
 
 NV_STATUS uvm_va_space_create(struct inode *inode, struct file *filp);
@@ -523,6 +549,7 @@ bool uvm_va_space_can_read_duplicate(uvm_va_space_t *va_space, uvm_gpu_t *changi
 // corresponding node id.
 NV_STATUS uvm_va_space_register_gpu(uvm_va_space_t *va_space,
                                     const NvProcessorUuid *gpu_uuid,
+                                    const uvm_rm_user_object_t *user_rm_va_space,
                                     NvBool *numa_enabled,
                                     NvS32 *numa_node_id);
 
@@ -561,6 +588,7 @@ bool uvm_va_space_peer_enabled(uvm_va_space_t *va_space, uvm_gpu_t *gpu1, uvm_gp
 
 static uvm_va_space_t *uvm_va_space_get(struct file *filp)
 {
+    UVM_ASSERT(uvm_file_is_nvidia_uvm(filp));
     UVM_ASSERT_MSG(filp->private_data != NULL, "filp: 0x%llx", (NvU64)filp);
 
     return (uvm_va_space_t *)filp->private_data;

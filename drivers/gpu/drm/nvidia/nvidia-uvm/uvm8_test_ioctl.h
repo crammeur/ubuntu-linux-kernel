@@ -1181,6 +1181,12 @@ typedef struct
 typedef struct
 {
     NvProcessorUuid                 gpu_uuid;                                           // In
+    NvHandle                        client;                                             // In
+
+
+
+    NvHandle                        object;                                             // In
+
 
     // On kernels with NUMA support, this entry contains the closest CPU NUMA
     // node to this GPU. Otherwise, the value will be -1.
@@ -1203,6 +1209,13 @@ typedef struct
 typedef struct
 {
     NvProcessorUuid                 gpu_uuid;                                           // In
+    NvHandle                        client;                                             // In
+
+
+
+    NvHandle                        object;                                             // In
+
+
     NV_STATUS                       rmStatus;                                           // Out
 } UVM_TEST_NUMA_CHECK_AFFINITY_PARAMS;
 

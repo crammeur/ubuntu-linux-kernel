@@ -82,6 +82,7 @@ NV_STATUS nvGpuOpsCreateSession(struct gpuSession **session);
 NV_STATUS nvGpuOpsDestroySession(struct gpuSession *session);
 
 NV_STATUS nvGpuOpsDeviceCreate(struct gpuSession *session,
+                               const gpuInfo *pGpuInfo,
                                const NvProcessorUuid *gpuGuid,
                                struct gpuDevice **device);
 
@@ -189,7 +190,9 @@ NV_STATUS nvGpuOpsFreeDupedHandle(struct gpuAddressSpace *sourceVaspace,
 
 NV_STATUS nvGpuOpsGetAttachedGpus(NvU8 *guidList, unsigned *numGpus);
 
-NV_STATUS nvGpuOpsGetGpuInfo(const NvProcessorUuid *gpuUuid, gpuInfo *pGpuInfo);
+NV_STATUS nvGpuOpsGetGpuInfo(const NvProcessorUuid *gpuUuid,
+                             const gpuClientInfo *pGpuClientInfo,
+                             gpuInfo *pGpuInfo);
 
 NV_STATUS nvGpuOpsGetGpuIds(const NvU8 *pUuid, unsigned uuidLength, NvU32 *pDeviceId,
                             NvU32 *pSubdeviceId);

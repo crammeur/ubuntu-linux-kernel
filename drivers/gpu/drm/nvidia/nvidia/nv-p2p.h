@@ -173,6 +173,11 @@ struct nvidia_p2p_page_table {
  *   Make the pages underlying a range of GPU virtual memory
  *   accessible to a third-party device.
  *
+ *   This API only supports pinned, GPU-resident memory, such as that provided
+ *   by cudaMalloc().
+ *
+ *   This API may sleep.
+ *
  * @param[in]     p2p_token
  *   A token that uniquely identifies the P2P mapping.
  * @param[in]     va_space

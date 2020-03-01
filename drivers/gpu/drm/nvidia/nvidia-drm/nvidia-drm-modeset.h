@@ -42,7 +42,7 @@ int nv_drm_atomic_commit(struct drm_device *dev,
 
 void nv_drm_handle_flip_occurred(struct nv_drm_device *nv_dev,
                                  NvU32 head,
-                                 NvKmsKapiPlaneType plane);
+                                 NvKmsKapiLayerType plane);
 
 int nv_drm_shut_down_all_crtcs(struct drm_device *dev);
 

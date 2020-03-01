@@ -14,7 +14,6 @@
 #include "nv-linux.h"
 #include "nv-p2p.h"
 #include "nv-reg.h"
-#include "rmil.h"
 #include "nv-msi.h"
 #include "nvlink_proto.h"
 #include "nv-pci-table.h"
@@ -588,6 +587,7 @@ nv_module_init(nv_stack_t **sp)
     {
         nv_printf(NV_DBG_ERRORS, "NVRM: rm_init_rm() failed!\n");
         nvlink_drivers_exit();
+        rc = -EIO;
         goto exit;
     }
 
@@ -626,9 +626,6 @@ nv_assert_not_in_gpu_blacklist(
     NvU8 *uuid;
     NvU32 len;
     NV_STATUS rmStatus;
-
-    if (NV_IS_GVI_DEVICE(nv))
-        return;
 
     rmStatus = rm_get_gpu_uuid(sp, nv, &uuid, &len);
     if (rmStatus != NV_OK)
@@ -907,7 +904,7 @@ out:
  *
  * 1) If any device has the given UUID, return it
  *
- * 2) If no device has the given UUID but at least one non-GVI device is missing
+ * 2) If no device has the given UUID but at least one device is missing
  *    its UUID (for example because rm_init_adapter has not run on it yet),
  *    return that device.
  *
@@ -947,10 +944,10 @@ static nv_linux_state_t *find_uuid_candidate(const NvU8 *uuid)
                 if (memcmp(dev_uuid, uuid, GPU_UUID_LEN) == 0)
                     goto out;
             }
-            else if (!NV_IS_GVI_DEVICE(nv))
+            else
             {
-                /* Case 2: If no device has the given UUID but at least one non-
-                 * GVI device is missing its UUID, return that device. */
+                /* Case 2: If no device has the given UUID but at least one
+                 * device is missing its UUID, return that device. */
                 if (use_missing)
                     goto out;
                 has_missing = 1;
@@ -1094,7 +1091,7 @@ static int nv_start_device(nv_state_t *nv, nvidia_stack_t *sp)
     }
 
 #if defined(NV_LINUX_PCIE_MSI_SUPPORTED)
-    if (nv_dev_is_pci(nvl->dev) && !NV_IS_GVI_DEVICE(nv))
+    if (nv_dev_is_pci(nvl->dev))
     {
         if (!(nv->flags & NV_FLAG_PERSISTENT_SW_STATE))
         {
@@ -1125,37 +1122,21 @@ static int nv_start_device(nv_state_t *nv, nvidia_stack_t *sp)
         goto failed;
     }
 
-    if (NV_IS_GVI_DEVICE(nv))
+    rc = 0;
+    if (!(nv->flags & NV_FLAG_PERSISTENT_SW_STATE))
     {
-        rc = request_irq(nv->interrupt_line, nv_gvi_kern_isr, nv_default_irq_flags(nv),
-                         nv_device_name, (void *)nvl);
-        if (rc == 0)
+        if (!(nv->flags & NV_FLAG_USES_MSIX))
         {
-            INIT_WORK(&nvl->work.task, nv_gvi_kern_bh);
-            nvl->work.data = nvl;
-
-            rm_init_gvi_device(sp, nv);
-            goto done;
+            rc = request_threaded_irq(nv->interrupt_line, nvidia_isr,
+                                  nvidia_isr_kthread_bh, nv_default_irq_flags(nv),
+                                  nv_device_name, (void *)nvl);
         }
-    }
-    else
-    {
-        rc = 0;
-        if (!(nv->flags & NV_FLAG_PERSISTENT_SW_STATE))
-        {
-            if (!(nv->flags & NV_FLAG_USES_MSIX))
-            {
-                rc = request_threaded_irq(nv->interrupt_line, nvidia_isr,
-                                      nvidia_isr_kthread_bh, nv_default_irq_flags(nv),
-                                      nv_device_name, (void *)nvl);
-            }
 #if defined(NV_LINUX_PCIE_MSI_SUPPORTED)
-            else
-            {
-                rc = nv_request_msix_irq(nvl);
-            }
-#endif
+        else
+        {
+            rc = nv_request_msix_irq(nvl);
         }
+#endif
     }
     if (rc != 0)
     {
@@ -1208,7 +1189,6 @@ static int nv_start_device(nv_state_t *nv, nvidia_stack_t *sp)
         goto failed;
     }
 
-    if (!NV_IS_GVI_DEVICE(nv))
     {
         NvU8 *uuid;
         if (rm_get_gpu_uuid_raw(sp, nv, &uuid, NULL) == NV_OK)
@@ -1219,7 +1199,6 @@ static int nv_start_device(nv_state_t *nv, nvidia_stack_t *sp)
         }
     }
 
-done:
     nv_acpi_register_notifier(nvl);
     nv->flags |= NV_FLAG_OPEN;
 
@@ -1570,37 +1549,28 @@ static void nv_stop_device(nv_state_t *nv, nvidia_stack_t *sp)
     rm_ref_dynamic_power(sp, nv, NV_DYNAMIC_PM_FINE);
 
 
-    if (NV_IS_GVI_DEVICE(nv))
-    {
-        rm_shutdown_gvi_device(sp, nv);
-        flush_scheduled_work();
-        free_irq(nv->interrupt_line, (void *)nvl);
-    }
-    else
-    {
 #if defined(NV_UVM_ENABLE)
+    {
+        const NvU8* uuid;
+        // Inform UVM before disabling adapter. Use cached copy
+        uuid = nv_get_cached_uuid(nv);
+        if (uuid != NULL)
         {
-            const NvU8* uuid;
-            // Inform UVM before disabling adapter. Use cached copy
-            uuid = nv_get_cached_uuid(nv);
-            if (uuid != NULL)
-            {
-                // this function cannot fail
-                nv_uvm_notify_stop_device(uuid);
-            }
+            // this function cannot fail
+            nv_uvm_notify_stop_device(uuid);
         }
+    }
 #endif
-        /* Adapter is already shutdown as part of nvidia_pci_remove */
-        if (!nv->removed)
+    /* Adapter is already shutdown as part of nvidia_pci_remove */
+    if (!nv->removed)
+    {
+        if (nv->flags & NV_FLAG_PERSISTENT_SW_STATE)
         {
-            if (nv->flags & NV_FLAG_PERSISTENT_SW_STATE)
-            {
-                rm_disable_adapter(sp, nv);
-            }
-            else
-            {
-                nv_shutdown_adapter(sp, nv, nvl);
-            }
+            rm_disable_adapter(sp, nv);
+        }
+        else
+        {
+            nv_shutdown_adapter(sp, nv, nvl);
         }
     }
 
@@ -1830,8 +1800,7 @@ nvidia_poll(
 
 #define NV_ACTUAL_DEVICE_ONLY(nv)              \
 {                                              \
-    if (((nv)->flags & (NV_FLAG_CONTROL |      \
-                        NV_FLAG_GVI)) != 0)    \
+    if (((nv)->flags & NV_FLAG_CONTROL) != 0)  \
     {                                          \
         status = -EINVAL;                      \
         goto done;                             \
@@ -2341,24 +2310,21 @@ nvidia_isr(
     rm_fault_handling_needed = (rm_serviceable_fault_cnt != 0);
 
 #if defined (NV_UVM_ENABLE)
-    if (!NV_IS_GVI_DEVICE(nv))
-    {
-        //
-        // Returns NV_OK if the UVM driver handled the interrupt
-        //
-        // Returns NV_ERR_NO_INTR_PENDING if the interrupt is not for
-        // the UVM driver.
-        //
-        // Returns NV_WARN_MORE_PROCESSING_REQUIRED if the UVM top-half ISR was
-        // unable to get its lock(s), due to other (UVM) threads holding them.
-        //
-        // RM can normally treat NV_WARN_MORE_PROCESSING_REQUIRED the same as
-        // NV_ERR_NO_INTR_PENDING, but in some cases the extra information may
-        // be helpful.
-        //
-        if (nv_uvm_event_interrupt(nv_get_cached_uuid(nv)) == NV_OK)
-            uvm_handled = TRUE;
-    }
+    //
+    // Returns NV_OK if the UVM driver handled the interrupt
+    //
+    // Returns NV_ERR_NO_INTR_PENDING if the interrupt is not for
+    // the UVM driver.
+    //
+    // Returns NV_WARN_MORE_PROCESSING_REQUIRED if the UVM top-half ISR was
+    // unable to get its lock(s), due to other (UVM) threads holding them.
+    //
+    // RM can normally treat NV_WARN_MORE_PROCESSING_REQUIRED the same as
+    // NV_ERR_NO_INTR_PENDING, but in some cases the extra information may
+    // be helpful.
+    //
+    if (nv_uvm_event_interrupt(nv_get_cached_uuid(nv)) == NV_OK)
+        uvm_handled = TRUE;
 #endif
 
     rm_handled = rm_isr(nvl->sp[NV_DEV_STACK_ISR], nv,
@@ -3500,14 +3466,10 @@ nv_power_management(
             nv_kthread_q_stop(&nvl->bottom_half_q);
 
             nv_disable_pat_support();
-
-            pci_save_state(nvl->pci_dev);
             break;
         }
         case NV_PM_ACTION_RESUME:
         {
-            pci_restore_state(nvl->pci_dev);
-
             nv_enable_pat_support();
 
             nv_kthread_q_item_init(&nvl->bottom_half_q_item,
@@ -3642,23 +3604,15 @@ nvidia_suspend(
         goto done;
     }
 
-    if (NV_IS_GVI_DEVICE(nv))
+    nvidia_modeset_suspend(nv->gpu_id);
+
+    status = nv_power_management(nv, pm_action);
+
+    if (status != NV_OK)
     {
-        status = nv_gvi_suspend(nv, pm_action);
+        nvidia_modeset_resume(nv->gpu_id);
     }
     else
-    {
-        nvidia_modeset_suspend(nv->gpu_id);
-
-        status = nv_power_management(nv, pm_action);
-
-        if (status != NV_OK)
-        {
-            nvidia_modeset_resume(nv->gpu_id);
-        }
-    }
-
-    if (status == NV_OK)
     {
         nv->flags |= NV_FLAG_SUSPENDED;
     }
@@ -3693,22 +3647,11 @@ nvidia_resume(
     }
     else
     {
-        if (NV_IS_GVI_DEVICE(nv))
-        {
-            status = nv_gvi_resume(nv, pm_action);
-        }
-        else
-        {
-            status = nv_power_management(nv, pm_action);
-
-            if (status == NV_OK)
-            {
-                nvidia_modeset_resume(nv->gpu_id);
-            }
-        }
+        status = nv_power_management(nv, pm_action);
 
         if (status == NV_OK)
         {
+            nvidia_modeset_resume(nv->gpu_id);
             nv->flags &= ~NV_FLAG_SUSPENDED;
         }
     }
@@ -3977,11 +3920,6 @@ nvidia_transition_dynamic_power(
     nv_state_t *nv = NV_STATE_PTR(nvl);
     nvidia_stack_t *sp = NULL;
     NV_STATUS status;
-
-    if (NV_IS_GVI_DEVICE(nv))
-    {
-        return -EINVAL;
-    }
 
     if ((nv->flags & (NV_FLAG_OPEN | NV_FLAG_PERSISTENT_SW_STATE)) == 0)
     {

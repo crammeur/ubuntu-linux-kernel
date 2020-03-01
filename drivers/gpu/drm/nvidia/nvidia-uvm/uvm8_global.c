@@ -38,10 +38,11 @@
 #include "uvm8_gpu_access_counters.h"
 #include "nv_uvm_interface.h"
 
-static int uvm8_ats_mode = -1;
+static int uvm8_ats_mode = 1;
 module_param(uvm8_ats_mode, int, S_IRUGO);
-MODULE_PARM_DESC(uvm8_ats_mode, "Override the default ATS (Address Translation Services) "
-                                "UVM mode by disabling (0) or enabling (1)");
+MODULE_PARM_DESC(uvm8_ats_mode, "Set to 0 to disable ATS (Address Translation Services). "
+                                "Any other value is ignored. Has no effect unless the "
+                                "platform supports ATS.");
 
 uvm_global_t g_uvm_global;
 static struct UvmOpsUvmEvents g_exported_uvm8_ops;
@@ -78,32 +79,7 @@ static void uvm8_unregister_callbacks(void)
 static void ats_init(const UvmPlatformInfo *platform_info)
 {
     g_uvm_global.ats.supported = platform_info->atsSupported;
-
-    switch (uvm8_ats_mode) {
-        case 0:
-            // Always allow override to disable
-            g_uvm_global.ats.enabled = false;
-            break;
-
-        case 1:
-            g_uvm_global.ats.enabled = platform_info->atsSupported;
-            if (!g_uvm_global.ats.enabled) {
-                pr_info("This platform does not support ATS. Ignoring uvm8_ats_mode.\n");
-            }
-            else if (!UVM_KERNEL_SUPPORTS_IBM_ATS()) {
-                // TODO: Bug 2103667: After ATS development stabilizes and
-                //       systems have been upgraded, disallow this case.
-                pr_info("WARNING: This kernel has incomplete ATS support and you may experience system instability or "
-                        "crashes. This option will be removed in the future.\n");
-            }
-
-            break;
-
-        default:
-            // Pick the default
-            g_uvm_global.ats.enabled = platform_info->atsSupported && UVM_KERNEL_SUPPORTS_IBM_ATS();
-            break;
-    }
+    g_uvm_global.ats.enabled   = uvm8_ats_mode && g_uvm_global.ats.supported && UVM_KERNEL_SUPPORTS_IBM_ATS();
 }
 
 NV_STATUS uvm_global_init(void)
@@ -209,8 +185,6 @@ NV_STATUS uvm_global_init(void)
         goto error;
     }
 
-    uvm_ats_ibm_init();
-
     // This sets up the ISR (interrupt service routine), by hooking into RM's top-half ISR callback. As soon as this
     // call completes, GPU interrupts will start arriving, so it's important to be prepared to receive interrupts before
     // this point:
@@ -236,7 +210,6 @@ void uvm_global_exit(void)
     nv_kthread_q_flush(&g_uvm_global.deferred_release_q);
 
     uvm8_unregister_callbacks();
-    uvm_ats_ibm_exit();
     uvm_perf_heuristics_exit();
     uvm_perf_events_exit();
     uvm_migrate_exit();

@@ -109,11 +109,12 @@ static void blocks_array_shrink(uvm_va_range_t *va_range, size_t new_num_blocks)
 
 static uvm_va_range_t *uvm_va_range_alloc(uvm_va_space_t *va_space, NvU64 start, NvU64 end)
 {
-    uvm_va_range_t *va_range = kmem_cache_zalloc(g_uvm_va_range_cache, NV_UVM_GFP_FLAGS);
+    uvm_va_range_t *va_range = nv_kmem_cache_zalloc(g_uvm_va_range_cache, NV_UVM_GFP_FLAGS);
     if (!va_range)
         return NULL;
 
     uvm_assert_rwsem_locked_write(&va_space->lock);
+    UVM_ASSERT(uvm_va_space_initialized(va_space) == NV_OK);
 
     va_range->va_space = va_space;
     va_range->node.start = start;
@@ -1554,7 +1555,7 @@ NV_STATUS uvm_va_space_split_span_as_needed(uvm_va_space_t *va_space,
 
 uvm_vma_wrapper_t *uvm_vma_wrapper_alloc(struct vm_area_struct *vma)
 {
-    uvm_vma_wrapper_t *vma_wrapper = kmem_cache_zalloc(g_uvm_vma_wrapper_cache, NV_UVM_GFP_FLAGS);
+    uvm_vma_wrapper_t *vma_wrapper = nv_kmem_cache_zalloc(g_uvm_vma_wrapper_cache, NV_UVM_GFP_FLAGS);
     if (!vma_wrapper)
         return NULL;
 

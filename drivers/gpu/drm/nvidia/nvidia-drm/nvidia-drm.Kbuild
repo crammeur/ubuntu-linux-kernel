@@ -51,6 +51,7 @@ NV_CONFTEST_GENERIC_COMPILE_TESTS += drm_available
 NV_CONFTEST_GENERIC_COMPILE_TESTS += drm_atomic_available
 NV_CONFTEST_GENERIC_COMPILE_TESTS += is_export_symbol_gpl_refcount_inc
 NV_CONFTEST_GENERIC_COMPILE_TESTS += is_export_symbol_gpl_refcount_dec_and_test
+NV_CONFTEST_GENERIC_COMPILE_TESTS += drm_alpha_blending_available
 
 NV_CONFTEST_FUNCTION_COMPILE_TESTS += drm_dev_unref
 NV_CONFTEST_FUNCTION_COMPILE_TESTS += drm_reinit_primary_mode_group
@@ -85,3 +86,5 @@ NV_CONFTEST_TYPE_COMPILE_TESTS += drm_mode_object_find_has_file_priv_arg
 NV_CONFTEST_TYPE_COMPILE_TESTS += dma_buf_owner
 NV_CONFTEST_TYPE_COMPILE_TESTS += drm_connector_list_iter
 NV_CONFTEST_TYPE_COMPILE_TESTS += drm_atomic_helper_swap_state_has_stall_arg
+NV_CONFTEST_TYPE_COMPILE_TESTS += drm_driver_prime_flag_present
+NV_CONFTEST_TYPE_COMPILE_TESTS += vm_fault_t

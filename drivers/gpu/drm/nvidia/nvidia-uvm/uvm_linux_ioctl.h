@@ -25,6 +25,10 @@
 
 #include "uvm_ioctl.h"
 
+// This ioctl must be the first operation performed on the UVM file descriptor
+// after opening it. Until this ioctl is made, the UVM file descriptor is
+// inoperable: all other ioctls will return NV_ERR_ILLEGAL_ACTION and mmap will
+// return EBADFD.
 #define UVM_INITIALIZE                                                0x30000001
 
 typedef struct

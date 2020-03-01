@@ -20,7 +20,6 @@
 #include "nv_compiler.h"
 #include "nv-reg.h"
 #include "conftest/patches.h"
-#include "rmil.h"
 #include "nv-ibmnpu.h"
 
 #define NV_DEFINE_SINGLE_NVRM_PROCFS_FILE(name) \
@@ -88,10 +87,8 @@ nv_procfs_read_gpu_info(
     nv_linux_state_t *nvl = NV_GET_NVL_FROM_NV_STATE(nv);
     struct pci_dev *pci_dev = nvl->pci_dev;
     char *type, *fmt, tmpstr[NV_DEVICE_NAME_LENGTH];
-    int status;
     NvU8 *uuid;
     NvU32 vbios_rev1, vbios_rev2, vbios_rev3, vbios_rev4, vbios_rev5;
-    NvU32 fpga_rev1, fpga_rev2, fpga_rev3;
     nvidia_stack_t *sp = NULL;
 
     if (nv_kmem_cache_alloc_stack(&sp) != 0)
@@ -99,59 +96,33 @@ nv_procfs_read_gpu_info(
         return 0;
     }
 
-    if (NV_IS_GVI_DEVICE(nv))
+    if (rm_get_device_name(sp, nv, pci_dev->device, pci_dev->subsystem_vendor,
+                pci_dev->subsystem_device, NV_DEVICE_NAME_LENGTH,
+                tmpstr) != NV_OK)
     {
-        if (rm_gvi_get_device_name(sp, nv, pci_dev->device, NV_DEVICE_NAME_LENGTH,
-                                   tmpstr) != NV_OK)
-        {
-            strcpy (tmpstr, "Unknown");
-        }
-    }
-    else
-    {
-        if (rm_get_device_name(sp, nv, pci_dev->device, pci_dev->subsystem_vendor,
-                    pci_dev->subsystem_device, NV_DEVICE_NAME_LENGTH,
-                    tmpstr) != NV_OK)
-        {
-            strcpy (tmpstr, "Unknown");
-        }
+        strcpy (tmpstr, "Unknown");
     }
 
     seq_printf(s, "Model: \t\t %s\n", tmpstr);
     seq_printf(s, "IRQ:   \t\t %d\n", nv->interrupt_line);
 
-    if (NV_IS_GVI_DEVICE(nv))
+    if (rm_get_gpu_uuid(sp, nv, &uuid, NULL) == NV_OK)
     {
-        status = rm_gvi_get_firmware_version(sp, nv, &fpga_rev1, &fpga_rev2,
-                                             &fpga_rev3);
-        if (status != NV_OK)
-            seq_printf(s, "Firmware: \t ????.??.??\n");
-        else
-        {
-            fmt = "Firmware: \t %x.%x.%x\n";
-            seq_printf(s, fmt, fpga_rev1, fpga_rev2, fpga_rev3);
-        }
+        seq_printf(s, "GPU UUID: \t %s\n", (char *)uuid);
+        os_free_mem(uuid);
+    }
+
+    if (rm_get_vbios_version(sp, nv, &vbios_rev1, &vbios_rev2,
+                &vbios_rev3, &vbios_rev4,
+                &vbios_rev5) != NV_OK)
+    {
+        seq_printf(s, "Video BIOS: \t ??.??.??.??.??\n");
     }
     else
     {
-        if (rm_get_gpu_uuid(sp, nv, &uuid, NULL) == NV_OK)
-        {
-            seq_printf(s, "GPU UUID: \t %s\n", (char *)uuid);
-            os_free_mem(uuid);
-        }
-
-        if (rm_get_vbios_version(sp, nv, &vbios_rev1, &vbios_rev2,
-                    &vbios_rev3, &vbios_rev4,
-                    &vbios_rev5) != NV_OK)
-        {
-            seq_printf(s, "Video BIOS: \t ??.??.??.??.??\n");
-        }
-        else
-        {
-            fmt = "Video BIOS: \t %02x.%02x.%02x.%02x.%02x\n";
-            seq_printf(s, fmt, vbios_rev1, vbios_rev2, vbios_rev3, vbios_rev4,
-                       vbios_rev5);
-        }
+        fmt = "Video BIOS: \t %02x.%02x.%02x.%02x.%02x\n";
+        seq_printf(s, fmt, vbios_rev1, vbios_rev2, vbios_rev3, vbios_rev4,
+                   vbios_rev5);
     }
 
     if (nv_find_pci_capability(pci_dev, PCI_CAP_ID_EXP))
@@ -855,17 +826,17 @@ nv_procfs_close_unbind_lock(
 
             if (nv->flags & NV_FLAG_UNBIND_LOCK)
             {
-                NV_DEV_PRINTF(NV_DBG_ERRORS, nv, "UnbindLock acquired");
+                NV_DEV_PRINTF(NV_DBG_ERRORS, nv, "UnbindLock acquired\n");
             }
             else
             {
-                NV_DEV_PRINTF(NV_DBG_ERRORS, nv, "Could not acquire UnbindLock");
+                NV_DEV_PRINTF(NV_DBG_ERRORS, nv, "Could not acquire UnbindLock\n");
             }
         }
         else if ((value == 0) && (nv->flags & NV_FLAG_UNBIND_LOCK))
         {
             nv->flags &= ~NV_FLAG_UNBIND_LOCK;
-            NV_DEV_PRINTF(NV_DBG_ERRORS, nv, "UnbindLock released");
+            NV_DEV_PRINTF(NV_DBG_ERRORS, nv, "UnbindLock released\n");
         }
         up(&nvl->ldata_lock);
     }

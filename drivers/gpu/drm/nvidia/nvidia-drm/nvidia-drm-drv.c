@@ -176,7 +176,7 @@ static void nv_drm_event_callback(const struct NvKmsKapiEvent *event)
             nv_drm_handle_flip_occurred(
                 nv_dev,
                 event->u.flipOccurred.head,
-                event->u.flipOccurred.plane);
+                event->u.flipOccurred.layer);
             break;
         default:
             break;
@@ -358,7 +358,9 @@ static int nv_drm_load(struct drm_device *dev, unsigned long flags)
 
     /* Add crtcs */
 
-    nv_drm_enumerate_crtcs_and_planes(nv_dev, resInfo.numHeads);
+    nv_drm_enumerate_crtcs_and_planes(nv_dev,
+                                      resInfo.numHeads,
+                                      resInfo.caps.validCursorCompositionModes);
 
     /* Add connectors and encoders */
 
@@ -659,7 +661,11 @@ static const struct drm_ioctl_desc nv_drm_ioctls[] = {
 
 static struct drm_driver nv_drm_driver = {
 
-    .driver_features        = DRIVER_GEM | DRIVER_PRIME | DRIVER_RENDER,
+    .driver_features        =
+#if defined(NV_DRM_DRIVER_PRIME_FLAG_PRESENT)
+                               DRIVER_PRIME |
+#endif
+                               DRIVER_GEM  | DRIVER_RENDER,
 
     .gem_free_object        = nv_drm_gem_free,
 

@@ -51,7 +51,7 @@ void drm_mode_to_nvkms_display_mode(const struct drm_display_mode *src,
                                     struct NvKmsKapiDisplayMode *dst);
 
 bool drm_plane_type_to_nvkms_plane_type(enum drm_plane_type src,
-                                        NvKmsKapiPlaneType *type);
+                                        NvKmsKapiLayerType *type);
 
 #endif /* NV_DRM_ATOMIC_MODESET_AVAILABLE */
 

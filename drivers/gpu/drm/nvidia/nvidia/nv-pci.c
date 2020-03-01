@@ -11,7 +11,6 @@
 #include "nv-pci-table.h"
 #include "nv-pci.h"
 #include "nv-ibmnpu.h"
-#include "rmil.h"
 #include "nv-frontend.h"
 #include "nv-msi.h"
 #include "nv-hypervisor.h"
@@ -52,9 +51,6 @@ nv_check_and_blacklist_gpu(
 {
     NV_STATUS rm_status;
     NvU8 *uuid_str;
-
-    if (NV_IS_GVI_DEVICE(nv))
-        return;
 
     rm_status = rm_get_gpu_uuid(sp, nv, &uuid_str, NULL);
     if (rm_status != NV_OK)
@@ -100,6 +96,7 @@ static void nv_init_dynamic_power_management
     nv_state_t *nv = NV_STATE_PTR(nvl);
     char filename[50];
     int ret;
+    NvBool pr3_acpi_method_present = NV_FALSE;
 
     nvl->sysfs_config_file = NULL;
 
@@ -117,7 +114,12 @@ static void nv_init_dynamic_power_management
         }
     }
 
-    rm_init_dynamic_power_management(sp, nv);
+    if (pci_dev->bus && pci_dev->bus->self)
+    {
+        pr3_acpi_method_present = nv_acpi_upstreamport_power_resource_method_present(pci_dev->bus->self);
+    }
+
+    rm_init_dynamic_power_management(sp, nv, pr3_acpi_method_present);
 }
 
 
@@ -156,30 +158,21 @@ nv_pci_probe
 
 
 
-    if ((pci_dev->class == (PCI_CLASS_MULTIMEDIA_OTHER << 8)) &&
-        (pci_dev->device == 0x0e00))
-    {
-        flags = NV_FLAG_GVI;
-    }
-
     if (nv_kmem_cache_alloc_stack(&sp) != 0)
     {
         return -1;
     }
 
-    if (!(flags & NV_FLAG_GVI))
+    if ((pci_dev->vendor != 0x10de) || (pci_dev->device < 0x20) ||
+        ((pci_dev->class != (PCI_CLASS_DISPLAY_VGA << 8)) &&
+         (pci_dev->class != (PCI_CLASS_DISPLAY_3D << 8))) ||
+        rm_is_legacy_device(sp, pci_dev->device, pci_dev->subsystem_vendor,
+                            pci_dev->subsystem_device, FALSE))
     {
-        if ((pci_dev->vendor != 0x10de) || (pci_dev->device < 0x20) ||
-            ((pci_dev->class != (PCI_CLASS_DISPLAY_VGA << 8)) &&
-             (pci_dev->class != (PCI_CLASS_DISPLAY_3D << 8))) ||
-            rm_is_legacy_device(sp, pci_dev->device, pci_dev->subsystem_vendor,
-                                pci_dev->subsystem_device, FALSE))
-        {
-            nv_printf(NV_DBG_ERRORS, "NVRM: ignoring the legacy GPU %04x:%02x:%02x.%x\n",
-                      NV_PCI_DOMAIN_NUMBER(pci_dev), NV_PCI_BUS_NUMBER(pci_dev),
-                      NV_PCI_SLOT_NUMBER(pci_dev), PCI_FUNC(pci_dev->devfn));
-            goto failed;
-        }
+        nv_printf(NV_DBG_ERRORS, "NVRM: ignoring the legacy GPU %04x:%02x:%02x.%x\n",
+                  NV_PCI_DOMAIN_NUMBER(pci_dev), NV_PCI_BUS_NUMBER(pci_dev),
+                  NV_PCI_SLOT_NUMBER(pci_dev), PCI_FUNC(pci_dev->devfn));
+        goto failed;
     }
 
     if (NV_IS_ASSIGN_GPU_PCI_INFO_SPECIFIED())
@@ -403,37 +396,20 @@ nv_pci_probe
     if (rm_get_cpu_type(sp, &nv_cpu_type) != NV_OK)
         nv_printf(NV_DBG_ERRORS, "NVRM: error retrieving cpu type\n");
 
-    if (NV_IS_GVI_DEVICE(nv))
+    status = nv_check_gpu_state(nv);
+    if (status == NV_ERR_GPU_IS_LOST)
     {
-        if (!rm_gvi_init_private_state(sp, nv))
-        {
-            nv_printf(NV_DBG_ERRORS, "NVGVI: rm_init_gvi_private_state() failed!\n");
-            goto err_not_supported;
-        }
-
-        if (rm_gvi_attach_device(sp, nv) != NV_OK)
-        {
-            rm_gvi_free_private_state(sp, nv);
-            goto err_not_supported;
-        }
+        NV_DEV_PRINTF(NV_DBG_INFO, nv, "GPU is lost, skipping nv_pci_probe\n");
+        goto err_not_supported;
     }
-    else
+
+    if ((rm_is_supported_device(sp, nv)) != NV_OK)
+        goto err_not_supported;
+
+    if (!rm_init_private_state(sp, nv))
     {
-        status = nv_check_gpu_state(nv);
-        if (status == NV_ERR_GPU_IS_LOST)
-        {
-            NV_DEV_PRINTF(NV_DBG_INFO, nv, "GPU is lost, skipping nv_pci_probe\n");
-            goto err_not_supported;
-        }
-
-        if ((rm_is_supported_device(sp, nv)) != NV_OK)
-            goto err_not_supported;
-
-        if (!rm_init_private_state(sp, nv))
-        {
-            NV_DEV_PRINTF(NV_DBG_ERRORS, nv, "rm_init_private_state() failed!\n");
-            goto err_zero_dev;
-        }
+        NV_DEV_PRINTF(NV_DBG_ERRORS, nv, "rm_init_private_state() failed!\n");
+        goto err_zero_dev;
     }
 
     nv_printf(NV_DBG_INFO,
@@ -646,25 +622,16 @@ nv_pci_remove(struct pci_dev *pci_dev)
 
     pci_set_drvdata(pci_dev, NULL);
 
-    if (NV_IS_GVI_DEVICE(nv))
+    for (i = 0; i < NV_GPU_NUM_BARS; i++)
     {
-        flush_scheduled_work();
-        rm_gvi_detach_device(sp, nv);
-        rm_gvi_free_private_state(sp, nv);
-    }
-    else
-    {
-        for (i = 0; i < NV_GPU_NUM_BARS; i++)
+        if (nv->bars[i].size != 0)
         {
-            if (nv->bars[i].size != 0)
-            {
-                nv_user_map_unregister(nv->bars[i].cpu_address,
-                                       nv->bars[i].strapped_size);
-            }
+            nv_user_map_unregister(nv->bars[i].cpu_address,
+                                   nv->bars[i].strapped_size);
         }
-        rm_i2c_remove_adapters(sp, nv);
-        rm_free_private_state(sp, nv);
     }
+    rm_i2c_remove_adapters(sp, nv);
+    rm_free_private_state(sp, nv);
     release_mem_region(NV_PCI_RESOURCE_START(pci_dev, NV_GPU_BAR_INDEX_REGS),
                        NV_PCI_RESOURCE_SIZE(pci_dev, NV_GPU_BAR_INDEX_REGS));
 
@@ -810,14 +777,6 @@ nv_pci_count_devices(nvidia_stack_t *sp)
             nv_pci_validate_assigned_gpus(pci_dev);
         }
         pci_dev = NV_PCI_GET_CLASS(PCI_CLASS_DISPLAY_3D << 8, pci_dev);
-    }
-
-    pci_dev = NV_PCI_GET_CLASS(PCI_CLASS_MULTIMEDIA_OTHER << 8, NULL);
-    while (pci_dev)
-    {
-        if ((pci_dev->vendor == 0x10de) && (pci_dev->device == 0x0e00))
-            count++;
-        pci_dev = NV_PCI_GET_CLASS(PCI_CLASS_MULTIMEDIA_OTHER << 8, pci_dev);
     }
 
     if (NV_IS_ASSIGN_GPU_PCI_INFO_SPECIFIED())

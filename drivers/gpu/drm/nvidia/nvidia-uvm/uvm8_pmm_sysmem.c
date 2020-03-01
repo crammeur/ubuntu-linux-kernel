@@ -96,7 +96,7 @@ NV_STATUS uvm_pmm_sysmem_mappings_add_gpu_mapping(uvm_pmm_sysmem_mappings_t *sys
     if (!sysmem_mappings->gpu->access_counters_supported)
         return NV_OK;
 
-    new_reverse_map = kmem_cache_zalloc(g_reverse_page_map_cache, NV_UVM_GFP_FLAGS);
+    new_reverse_map = nv_kmem_cache_zalloc(g_reverse_page_map_cache, NV_UVM_GFP_FLAGS);
     if (!new_reverse_map)
         return NV_ERR_NO_MEMORY;
 
@@ -255,7 +255,7 @@ NV_STATUS uvm_pmm_sysmem_mappings_split_gpu_mappings(uvm_pmm_sysmem_mappings_t *
 
     // Allocate the descriptors for the new subregions
     for (subregion = 1; subregion < num_subregions; ++subregion) {
-        uvm_reverse_map_t *new_reverse_map = kmem_cache_zalloc(g_reverse_page_map_cache, NV_UVM_GFP_FLAGS);
+        uvm_reverse_map_t *new_reverse_map = nv_kmem_cache_zalloc(g_reverse_page_map_cache, NV_UVM_GFP_FLAGS);
         uvm_page_index_t page_index = orig_reverse_map->region.first + num_pages * subregion;
 
         if (new_reverse_map == NULL) {

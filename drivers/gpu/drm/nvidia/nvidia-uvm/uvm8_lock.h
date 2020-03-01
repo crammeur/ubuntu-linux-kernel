@@ -82,28 +82,14 @@
 //                                              pnv_npu2_init_context (!)   N             M
 //        pnv_npu2_destroy_context                                          N
 //
-//      Thread A's pnv_npu2_init_context will fail because the callback
+//      Thread B's pnv_npu2_init_context will fail because the callback
 //      parameter (va_space_mm N) won't match the currently-latched callback
-//      arg set by Thread B (va_space_mm M). Once Thread A finishes its
+//      arg set by Thread A (va_space_mm M). Once Thread A finishes its
 //      pnv_npu2_destroy_context call, things would work fine.
 //
 //      We must handle this case because it's not a race from the perspective of
 //      the user. Different threads are allowed to freely register and
 //      unregister GPU VA spaces on different GPUs in the same VA space.
-//
-// - ATS IBM MM register/unregister lock
-//      Order: UVM_LOCK_ORDER_ATS_IBM_MM
-//      Exclusive lock (mutex)
-//
-//      This lock protects the association of a VA space to an mm_struct. It
-//      must be held across enabling or disabling ATS on an {mm, GPU VA space}
-//      pair. Since disabling ATS requires taking mmap_sem and the VA space
-//      lock, this lock must be above them.
-//
-//      See the block comment at the top of uvm8_ats_ibm.c for the gory details.
-//
-//      TODO: Bug 2062970: This lock should be removed when the npu code is
-//            fixed.
 //
 // - Global driver state lock (g_uvm_global.global_lock)
 //      Order: UVM_LOCK_ORDER_GLOBAL
@@ -394,7 +380,6 @@ typedef enum
     UVM_LOCK_ORDER_INVALID = 0,
     UVM_LOCK_ORDER_GLOBAL_PM,
     UVM_LOCK_ORDER_ATS_IBM_REG_UNREG,
-    UVM_LOCK_ORDER_ATS_IBM_MM,
     UVM_LOCK_ORDER_GLOBAL,
     UVM_LOCK_ORDER_ISR,
     UVM_LOCK_ORDER_MMAP_SEM,

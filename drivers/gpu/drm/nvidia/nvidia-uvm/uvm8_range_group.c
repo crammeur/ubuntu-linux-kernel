@@ -57,7 +57,7 @@ static uvm_range_group_range_t *range_group_range_create(uvm_range_group_t *rang
                                                          NvU64 start,
                                                          NvU64 end)
 {
-    uvm_range_group_range_t *rgr = kmem_cache_zalloc(g_uvm_range_group_range_cache, NV_UVM_GFP_FLAGS);
+    uvm_range_group_range_t *rgr = nv_kmem_cache_zalloc(g_uvm_range_group_range_cache, NV_UVM_GFP_FLAGS);
     if (rgr == NULL)
         return NULL;
 
@@ -92,7 +92,7 @@ NV_STATUS uvm_api_create_range_group(UVM_CREATE_RANGE_GROUP_PARAMS *params, stru
     NV_STATUS status = NV_OK;
     int ret;
 
-    range_group = kmem_cache_zalloc(g_uvm_range_group_cache, NV_UVM_GFP_FLAGS);
+    range_group = nv_kmem_cache_zalloc(g_uvm_range_group_cache, NV_UVM_GFP_FLAGS);
     if (!range_group)
         return NV_ERR_NO_MEMORY;
 

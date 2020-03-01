@@ -188,7 +188,8 @@ struct nv_drm_flip *nv_drm_crtc_dequeue_flip(struct nv_drm_crtc *nv_crtc)
 }
 
 void nv_drm_enumerate_crtcs_and_planes(struct nv_drm_device *nv_dev,
-                                       unsigned int num_heads);
+                                       unsigned int num_heads,
+                                       NvU32 validCursorCompositionModes);
 
 int nv_drm_get_crtc_crc32_ioctl(struct drm_device *dev,
                                 void *data, struct drm_file *filep);

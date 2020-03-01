@@ -541,7 +541,7 @@ struct uvm_gpu_struct
     atomic64_t retained_count;
 
     // GPU information and provided by RM (architecture, implementation,
-    // hardware classes, etc.)
+    // hardware classes, etc.).
     UvmGpuInfo rm_info;
 
     // A unique uvm gpu id in range [1, UVM_ID_MAX_PROCESSORS)
@@ -699,9 +699,8 @@ struct uvm_gpu_struct
     // This value is only defined for GPUs that support non-replayable faults
     bool has_clear_faulted_channel_method;
 
-
-
-
+    // Maximum number of subcontexts supported
+    NvU32 max_subcontexts;
 
     // Parameters used by the TLB batching API
     struct
@@ -813,6 +812,8 @@ struct uvm_gpu_struct
         struct proc_dir_entry *fault_stats_file;
 
         struct proc_dir_entry *access_counters_file;
+
+        struct proc_dir_entry *dir_peers;
     } procfs;
 
     uvm_pmm_gpu_t pmm;
@@ -881,6 +882,19 @@ struct uvm_gpu_struct
     // This is set to true if the GPU belongs to an SLI group. Else, set to false.
     bool sli_enabled;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
     // Global statistics. These fields are per-GPU and most of them are only
     // updated during fault servicing, and can be safely incremented.
     struct
@@ -914,6 +928,7 @@ struct uvm_gpu_struct
     } nvswitch_info;
 
     uvm_gpu_link_type_t sysmem_link;
+    NvU32 sysmem_link_rate_mbyte_per_s;
 
     // Placeholder for per-GPU performance heuristics information
     uvm_perf_module_data_desc_t perf_modules_data[UVM_PERF_MODULE_TYPE_COUNT];
@@ -921,14 +936,30 @@ struct uvm_gpu_struct
 
 struct uvm_gpu_peer_struct
 {
-    // Note: All the peer_caps fields in this global structure can be queried
-    // if and only if the corresponding bit from "va_space.enabled_peers" bitmap
-    // is set.
+    // The fields in this global structure can only be inspected under one of
+    // the following conditions:
+    //
+    // - The VA space lock is held for either read or write, both GPUs are
+    //   registered in the VA space, and the corresponding bit in the
+    //   va_space.enabled_peers bitmap is set.
+    //
+    // - The global lock is held.
+    //
+    // - While the global lock was held in the past, the two GPUs were detected
+    //   to be NVLINK peers and were both retained.
+    //
+    // - While the global lock was held in the past, the two GPUs were detected
+    //   to be PCIe peers and uvm_gpu_retain_pcie_peer_access() was called.
+    //
+    // - The peer_gpus_lock is held on one of the GPUs. In this case, the other
+    //   GPU must be read from the original GPU's peer_gpus table. The fields
+    //   will not change while the lock is held, but they may no longer be valid
+    //   because the other GPU might be in teardown.
 
     // Peer Id associated with this device w.r.t. to a peer GPU.
     // Note: peerId (A -> B) != peerId (B -> A)
-    // peer_id[0] from min(gpu_id_1, gpi_id_2) -> max(gpu_id_1, gpi_id_2)
-    // peer_id[1] from max(gpu_id_1, gpi_id_2) -> min(gpu_id_1, gpi_id_2)
+    // peer_id[0] from min(gpu_id_1, gpu_id_2) -> max(gpu_id_1, gpu_id_2)
+    // peer_id[1] from max(gpu_id_1, gpu_id_2) -> min(gpu_id_1, gpu_id_2)
     NvU8 peer_ids[2];
 
     // Indirect peers are GPUs which can coherently access each others' memory
@@ -943,6 +974,11 @@ struct uvm_gpu_peer_struct
     // the refcount below goes from 0 to 1.
     uvm_gpu_link_type_t link_type;
 
+    // Maximum unidirectional bandwidth between the peers in megabytes per
+    // second, not taking into account the protocols' overhead. The reported
+    // bandwidth for indirect peers is zero. See UvmGpuP2PCapsParams.
+    NvU32 total_link_line_rate_mbyte_per_s;
+
     // For PCIe, the number of times that this has been retained by a VA space.
     // For NVLINK this will always be 1.
     NvU64 ref_count;
@@ -951,6 +987,16 @@ struct uvm_gpu_peer_struct
     // an NV50_P2P object. disable_peer_access resets the same on the object
     // deletion.
     NvHandle p2p_handle;
+
+    struct {
+        struct proc_dir_entry *peer_file[2];
+        struct proc_dir_entry *peer_symlink_file[2];
+
+        // GPU-A <-> GPU-B link is bidirectional, pairs[x][0] is always the
+        // local GPU, while pairs[x][1] is the remote GPU. The table shall be
+        // filled like so: [[GPU-A, GPU-B], [GPU-B, GPU-A]].
+        uvm_gpu_t *pairs[2][2];
+    } procfs;
 };
 
 // Initialize global gpu state
@@ -1000,7 +1046,9 @@ uvm_gpu_t *uvm_gpu_get_by_uuid_locked(const NvProcessorUuid *gpu_uuid);
 // Returns the retained uvm_gpu_t in gpu_out on success
 //
 // LOCKING: Takes and releases the global lock for the caller.
-NV_STATUS uvm_gpu_retain_by_uuid(const NvProcessorUuid *gpu_uuid, uvm_gpu_t **gpu_out);
+NV_STATUS uvm_gpu_retain_by_uuid(const NvProcessorUuid *gpu_uuid,
+                                 const uvm_rm_user_object_t *user_rm_device,
+                                 uvm_gpu_t **gpu_out);
 
 // Retain a gpu which is known to already be retained. Does NOT require the
 // global lock to be held.

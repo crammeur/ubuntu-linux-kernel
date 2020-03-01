@@ -74,7 +74,7 @@ static NV_STATUS get_rm_ptes(uvm_va_range_t *va_range,
                                                                        mapping_info));
     }
 
-    if (status != NV_OK) {
+    if ((status != NV_OK) && (status != NV_ERR_NOT_READY)) {
         UVM_ERR_PRINT("Failed to get %s mappings for VA range [0x%llx, 0x%llx], offset 0x%llx, size 0x%llx: %s\n",
                       va_range->type == UVM_VA_RANGE_TYPE_CHANNEL ? "channel" : "external",
                       va_range->node.start, va_range->node.end, map_offset, map_size, nvstatusToString(status));
@@ -522,9 +522,22 @@ static bool uvm_api_kind_type_invalid(UvmGpuFormatType format_type, UvmGpuFormat
 static NV_STATUS set_ext_gpu_map_location(uvm_ext_gpu_map_t *ext_gpu_map,
                                           uvm_va_space_t *va_space,
                                           uvm_gpu_t *mapping_gpu,
-                                          UvmGpuMemoryInfo *mem_info)
+                                          const UvmGpuMemoryInfo *mem_info)
 {
     uvm_gpu_t *owning_gpu;
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     // This is a local or peer allocation, so the owning GPU must have been
     // registered.
@@ -559,7 +572,7 @@ static NV_STATUS set_ext_gpu_map_location(uvm_ext_gpu_map_t *ext_gpu_map,
 
 static NV_STATUS uvm_map_external_allocation_on_gpu(uvm_va_range_t *va_range,
                                                     uvm_gpu_t *mapping_gpu,
-                                                    uvm_rm_user_object_t *user_rm_mem,
+                                                    const uvm_rm_user_object_t *user_rm_mem,
                                                     const uvm_map_rm_params_t *map_rm_params,
                                                     uvm_tracker_t *out_tracker)
 {
@@ -602,8 +615,10 @@ static NV_STATUS uvm_map_external_allocation_on_gpu(uvm_va_range_t *va_range,
                                                         &mem_info));
     if (status != NV_OK) {
         UVM_DBG_PRINT("Failed to dup memory handle {0x%x, 0x%x}: %s, GPU: %s\n",
-                      user_rm_mem->user_client, user_rm_mem->user_object,
-                      nvstatusToString(status), mapping_gpu->name);
+                      user_rm_mem->user_client,
+                      user_rm_mem->user_object,
+                      nvstatusToString(status),
+                      mapping_gpu->name);
         goto error;
     }
 

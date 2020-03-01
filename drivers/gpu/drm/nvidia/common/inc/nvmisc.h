@@ -473,16 +473,16 @@ do                                                      \
 
 #define DRF_VAL_BS(d,r,f,v)                 ( DRF_SPANS(NV##d##r##f) ? DRF_VAL_BS_2WORD(d,r,f,(v)) : DRF_VAL_BS_1WORD(d,r,f,(v)) )
 
-//-------------------------------------------------------------------------//
-//                                                                         //
-// Common defines for engine register reference wrappers                   //
-//                                                                         //
-// New engine addressing can be created like:                              //
-// #define ENG_REG_PMC(o,d,r)                      NV##d##r                //
-// #define ENG_IDX_REG_CE(o,d,i,r)                 CE_MAP(o,r,i)           //
-//                                                                         //
-// See FB_FBPA* for more examples                                          //
-//-------------------------------------------------------------------------//
+//------------------------------------------------------------------------//
+//                                                                        //
+// Common defines for engine register reference wrappers                  //
+//                                                                        //
+// New engine addressing can be created like:                             //
+// \#define ENG_REG_PMC(o,d,r)                     NV##d##r               //
+// \#define ENG_IDX_REG_CE(o,d,i,r)                CE_MAP(o,r,i)          //
+//                                                                        //
+// See FB_FBPA* for more examples                                         //
+//------------------------------------------------------------------------//
 
 #define ENG_RD_REG(g,o,d,r)             GPU_REG_RD32(g, ENG_REG##d(o,d,r))
 #define ENG_WR_REG(g,o,d,r,v)           GPU_REG_WR32(g, ENG_REG##d(o,d,r), (v))

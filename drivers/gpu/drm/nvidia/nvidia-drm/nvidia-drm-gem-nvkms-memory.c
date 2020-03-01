@@ -24,7 +24,6 @@
 
 #if defined(NV_DRM_ATOMIC_MODESET_AVAILABLE)
 
-#include "nv-linux.h"
 #include "nvidia-drm-gem-nvkms-memory.h"
 #include "nvidia-drm-ioctl.h"
 

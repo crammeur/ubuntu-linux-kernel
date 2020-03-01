@@ -1,5 +1,5 @@
 /*******************************************************************************
-    Copyright (c) 2013 NVidia Corporation
+    Copyright (c) 2013-2019 NVidia Corporation
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to
@@ -141,6 +141,23 @@ typedef struct
 
 // forward declaration of OS-dependent structure
 struct UvmGlobalState_tag;
+
+// Platform specific parameters for UvmRegisterGpu*
+typedef union
+{
+    struct {
+        // File descriptor for RM's control file
+        int ctrlFd;
+        // RM client handle
+        NvHandle hClient;
+
+
+
+
+        NvHandle hObject;
+
+    } rm_linux;
+} UvmGpuPlatformParams;
 
 // Platform specific parameters for UvmRegisterGpuVaSpace
 typedef union

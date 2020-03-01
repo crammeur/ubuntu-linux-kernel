@@ -236,19 +236,19 @@ void drm_mode_to_nvkms_display_mode(const struct drm_display_mode *src,
 }
 
 bool drm_plane_type_to_nvkms_plane_type(enum drm_plane_type src,
-                                        NvKmsKapiPlaneType *type)
+                                        NvKmsKapiLayerType *type)
 {
     switch (src) {
         default:
             return false;
         case DRM_PLANE_TYPE_OVERLAY:
-            *type = NVKMS_KAPI_PLANE_OVERLAY;
+            *type = NVKMS_KAPI_LAYER_OVERLAY;
             break;
         case DRM_PLANE_TYPE_PRIMARY:
-            *type = NVKMS_KAPI_PLANE_PRIMARY;
+            *type = NVKMS_KAPI_LAYER_PRIMARY;
             break;
         case DRM_PLANE_TYPE_CURSOR:
-            *type = NVKMS_KAPI_PLANE_CURSOR;
+            *type = NVKMS_KAPI_LAYER_CURSOR;
             break;
     }
 

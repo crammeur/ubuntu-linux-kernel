@@ -232,6 +232,11 @@ BOOL NV_API_CALL os_is_administrator(void)
     return NV_IS_SUSER();
 }
 
+BOOL NV_API_CALL os_allow_priority_override(void)
+{
+    return capable(CAP_SYS_NICE);
+}
+
 NvU32 NV_API_CALL os_get_page_size(void)
 {
     return PAGE_SIZE;
@@ -735,9 +740,45 @@ int NV_API_CALL nv_printf(NvU32 debuglevel, const char *printf_format, ...)
 
     if (debuglevel >= ((cur_debuglevel >> 4) & 0x3))
     {
+        size_t length;
+        char *temp;
+
+        // When printk is called to extend the output of the previous line
+        // (i.e. when the previous line did not end in \n), the printk call
+        // must contain KERN_CONT.  Older kernels still print the line
+        // correctly, but KERN_CONT was technically always required.
+
+        // This means that every call to printk() needs to have a KERN_xxx
+        // prefix.  The only way to get this is to rebuild the format string
+        // into a new buffer, with a KERN_xxx prefix prepended.
+
+        // Unfortunately, we can't guarantee that two calls to nv_printf()
+        // won't be interrupted by a printk from another driver.  So to be
+        // safe, we always append KERN_CONT.  It's still technically wrong,
+        // but it works.
+
+        // The long-term fix is to modify all NV_PRINTF-ish calls so that the
+        // string always contains only one \n (at the end) and NV_PRINTF_EX
+        // is deleted.  But that is unlikely to ever happen.
+
+        length = strlen(printf_format);
+        if (length < 1)
+            return 0;
+
+        temp = kmalloc(length + sizeof(KERN_CONT), GFP_ATOMIC);
+        if (!temp)
+            return 0;
+
+        // KERN_CONT changed in the 3.6 kernel, so we can't assume its
+        // composition or size.
+        memcpy(temp, KERN_CONT, sizeof(KERN_CONT) - 1);
+        memcpy(temp + sizeof(KERN_CONT) - 1, printf_format, length + 1);
+
         va_start(arglist, printf_format);
-        chars_written = vprintk(printf_format, arglist);
+        chars_written = vprintk(temp, arglist);
         va_end(arglist);
+
+        kfree(temp);
     }
 
     return chars_written;
@@ -1321,6 +1362,15 @@ NvBool NV_API_CALL os_is_grid_supported(void)
     return TRUE;
 #else
     return FALSE;
+#endif
+}
+
+NvU32 NV_API_CALL os_get_grid_csp_support(void)
+{
+#if defined(NV_GRID_BUILD_CSP)
+    return NV_GRID_BUILD_CSP;
+#else
+    return 0;
 #endif
 }
 

@@ -38,18 +38,9 @@ extern "C" {
 
 #define PCI_CLASS_BRIDGE_NVSWITCH       0x0680
 
-#define PCI_DEVICE_ID_SV10_INT          0x10F5:0x10F5
-#define PCI_DEVICE_ID_SV10              0x1ACF:0x1AC0
-
-
-
-
-
 #ifndef PCI_VENDOR_ID_NVIDIA
 #define PCI_VENDOR_ID_NVIDIA            0x10DE
 #endif
-
-#define PCI_REVISION_ID_SV10            0x0
 
 #define PCI_ADDR_OFFSET_VENDOR          0
 #define PCI_ADDR_OFFSET_DEVID           2
@@ -66,9 +57,7 @@ extern "C" {
 #define NVSWITCH_DMA_DIR_FROM_SYSMEM    1
 #define NVSWITCH_DMA_DIR_BIDIRECTIONAL  2
 
-
 typedef struct nvswitch_device nvswitch_device;
-
 
 /*
  * @Brief : The interface will check if the client's version is supported by the
@@ -220,6 +209,19 @@ void NVLINK_API_CALL nvswitch_lib_get_device_info
 );
 
 /*
+ * @Brief: Load platform information (emulation, simulation etc.).
+ *
+ * @param[in]  lib_handle   device
+ *
+ * @return                  NVL_SUCCESS on a successful command
+ *                          -NVL_BAD_ARGS if an invalid device is provided
+ */
+NvlStatus NVLINK_API_CALL nvswitch_lib_load_platform_info
+(
+    nvswitch_device *lib_handle
+);
+
+/*
  * @Brief : Enable interrupts for this device
  *
  * @Description :
@@ -341,6 +343,21 @@ void NVLINK_API_CALL
 nvswitch_lib_post_init_device
 (
     nvswitch_device *device
+);
+
+/*
+ * @Brief : Validates PCI device id
+ *
+ * @Description : Validates PCI device id
+ *
+ * @param[in] device    The device id to be validated
+ *
+ * @returns             True if device id is valid
+ */
+NvBool NVLINK_API_CALL
+nvswitch_lib_validate_device_id
+(
+    NvU32 device_id
 );
 
 /*

@@ -140,6 +140,8 @@ NV_CONFTEST_FUNCTION_COMPILE_TESTS += of_find_matching_node
 NV_CONFTEST_FUNCTION_COMPILE_TESTS += dev_is_pci
 NV_CONFTEST_FUNCTION_COMPILE_TESTS += dma_direct_map_resource
 NV_CONFTEST_FUNCTION_COMPILE_TESTS += tegra_get_platform
+NV_CONFTEST_FUNCTION_COMPILE_TESTS += flush_cache_all
+NV_CONFTEST_FUNCTION_COMPILE_TESTS += vmf_insert_pfn
 
 NV_CONFTEST_SYMBOL_COMPILE_TESTS += is_export_symbol_gpl_of_node_to_nid
 NV_CONFTEST_SYMBOL_COMPILE_TESTS += is_export_symbol_present_swiotlb_map_sg_attrs
@@ -163,11 +165,15 @@ NV_CONFTEST_TYPE_COMPILE_TESTS += vmbus_channel_has_ringbuffer_page
 NV_CONFTEST_TYPE_COMPILE_TESTS += device_driver_of_match_table
 NV_CONFTEST_TYPE_COMPILE_TESTS += device_of_node
 NV_CONFTEST_TYPE_COMPILE_TESTS += node_states_n_memory
+NV_CONFTEST_TYPE_COMPILE_TESTS += kmem_cache_has_kobj_remove_work
+NV_CONFTEST_TYPE_COMPILE_TESTS += sysfs_slab_unlink
 
 NV_CONFTEST_GENERIC_COMPILE_TESTS += dom0_kernel_present
 NV_CONFTEST_GENERIC_COMPILE_TESTS += nvidia_vgpu_hyperv_available
 NV_CONFTEST_GENERIC_COMPILE_TESTS += nvidia_vgpu_kvm_build
 NV_CONFTEST_GENERIC_COMPILE_TESTS += nvidia_grid_build
+NV_CONFTEST_GENERIC_COMPILE_TESTS += nvidia_grid_csp_build
 NV_CONFTEST_GENERIC_COMPILE_TESTS += get_user_pages
 NV_CONFTEST_GENERIC_COMPILE_TESTS += get_user_pages_remote
 NV_CONFTEST_GENERIC_COMPILE_TESTS += pm_runtime_available
+NV_CONFTEST_GENERIC_COMPILE_TESTS += vm_fault_t

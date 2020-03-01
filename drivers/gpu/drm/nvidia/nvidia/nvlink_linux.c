@@ -501,9 +501,14 @@ void * NVLINK_API_CALL nvlink_memset(void *dest, int value, NvLength size)
      return memset(dest, value, size);
 }
 
-void * NVLINK_API_CALL nvlink_memcpy(void *dest, void *src, NvLength size)
+void * NVLINK_API_CALL nvlink_memcpy(void *dest, const void *src, NvLength size)
 {
     return memcpy(dest, src, size);
+}
+
+int NVLINK_API_CALL nvlink_memcmp(const void *s1, const void *s2, NvLength size)
+{
+    return memcmp(s1, s2, size);
 }
 
 static NvBool nv_timer_less_than

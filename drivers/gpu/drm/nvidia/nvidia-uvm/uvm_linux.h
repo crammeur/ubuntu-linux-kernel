@@ -50,6 +50,15 @@
 #include <linux/jhash.h>
 #include <linux/rwsem.h>
 #include <linux/rbtree.h>
+
+#if defined(NV_ASM_BARRIER_H_PRESENT)
+#include <asm/barrier.h>
+#endif
+
+#if defined(NV_LINUX_ATOMIC_H_PRESENT)
+#include <linux/atomic.h>
+#endif
+
 #include <asm/current.h>
 
 #include <linux/random.h>           /* get_random_bytes()               */
@@ -370,6 +379,16 @@ static inline NvU64 NV_GETTIME(void)
     }
 #endif
 
+// Added in 2.6.24
+#ifndef ACCESS_ONCE
+  #define ACCESS_ONCE(x) (*(volatile typeof(x) *)&(x))
+#endif
+
+// WRITE_ONCE/READ_ONCE have incompatible definitions across versions, which produces warnings.
+// Therefore, we define our own macros
+#define UVM_WRITE_ONCE(x, val) (ACCESS_ONCE(x) = (val))
+#define UVM_READ_ONCE(x) ACCESS_ONCE(x)
+
 // smp_mb__before_atomic was added in 3.16, provide a fallback
 #ifndef smp_mb__before_atomic
   #if NVCPU_IS_X86 || NVCPU_IS_X86_64
@@ -392,15 +411,38 @@ static inline NvU64 NV_GETTIME(void)
   #endif
 #endif
 
-// Added in 2.6.24
-#ifndef ACCESS_ONCE
-  #define ACCESS_ONCE(x) (*(volatile typeof(x) *)&(x))
+// smp_load_acquire and smp_store_release were added in commit
+// 47933ad41a86a4a9b50bed7c9b9bd2ba242aac63 ("arch: Introduce
+// smp_load_acquire(), smp_store_release()") in v3.14 (2013-11-06).
+#ifndef smp_load_acquire
+    #define smp_load_acquire(p)                     \
+        ({                                          \
+            typeof(*(p)) __v = UVM_READ_ONCE(*(p)); \
+            smp_mb();                               \
+            __v;                                    \
+        })
 #endif
 
-// WRITE_ONCE/READ_ONCE have incompatible definitions across versions, which produces warnings.
-// Therefore, we define our own macros
-#define UVM_WRITE_ONCE(x, val) (ACCESS_ONCE(x) = (val))
-#define UVM_READ_ONCE(x) ACCESS_ONCE(x)
+#ifndef smp_store_release
+    #define smp_store_release(p, v)     \
+        do {                            \
+            smp_mb();                   \
+            UVM_WRITE_ONCE(*(p), v);    \
+        } while (0)
+#endif
+
+// atomic_read_acquire and atomic_set_release were added in commit
+// 654672d4ba1a6001c365833be895f9477c4d5eab ("locking/atomics:
+// Add _{acquire|release|relaxed}() variants of some atomic operations") in v4.3
+// (2015-08-06).
+#ifndef atomic_read_acquire
+    #define atomic_read_acquire(p) smp_load_acquire(&(p)->counter)
+#endif
+
+#ifndef atomic_set_release
+    #define atomic_set_release(p, v) smp_store_release(&(p)->counter, v)
+#endif
+
 
 // Added in 3.11
 #ifndef PAGE_ALIGNED

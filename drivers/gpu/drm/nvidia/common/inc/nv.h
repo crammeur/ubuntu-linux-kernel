@@ -451,10 +451,10 @@ typedef struct
      */
     struct os_work_queue *queue;
 
-    NvBool console_device;
-
     /* Variable to track, if nvidia_remove is called */
     NvBool removed;
+
+    NvBool console_device;
 
     /* Variable to track, if GPU is external GPU */
     NvBool is_external_gpu;
@@ -478,7 +478,8 @@ typedef struct UvmGpuFbInfo_tag                     *nvgpuFbInfo_t;
 typedef struct UvmGpuFaultInfo_tag                  *nvgpuFaultInfo_t;
 typedef struct UvmGpuAccessCntrInfo_tag             *nvgpuAccessCntrInfo_t;
 typedef struct UvmGpuAccessCntrConfig_tag           *nvgpuAccessCntrConfig_t;
-typedef struct UvmGpuInfo_tag                       *nvgpuInfo_t;
+typedef struct UvmGpuInfo_tag                       nvgpuInfo_t;
+typedef struct UvmGpuClientInfo_tag                 nvgpuClientInfo_t;
 typedef struct gpuPmaAllocationOptions              *nvgpuPmaAllocationOptions_t;
 typedef struct UvmPmaStatistics_tag                 *nvgpuPmaStatistics_t;
 typedef struct UvmGpuMemoryInfo_tag                 *nvgpuMemoryInfo_t;
@@ -502,8 +503,8 @@ typedef NV_STATUS (*nvPmaEvictRangeCallback)(void *, NvU64, NvU64);
 #define NV_FLAG_USES_MSIX              0x0040
 #define NV_FLAG_PASSTHRU               0x0080
 #define NV_FLAG_SUSPENDED              0x0100
-#define NV_FLAG_GVI                    0x0200
-#define NV_FLAG_GVI_INTR_EN            0x0400
+// Unused                              0x0200
+// Unused                              0x0400
 #define NV_FLAG_PERSISTENT_SW_STATE    0x0800
 #define NV_FLAG_IN_RECOVERY            0x1000
 // Unused                              0x2000
@@ -543,7 +544,6 @@ typedef enum
 
 #define NV_PRIMARY_VGA(nv)      ((nv)->primary_vga)
 
-#define NV_IS_GVI_DEVICE(nv)    ((nv)->flags & NV_FLAG_GVI)
 #define NV_IS_CTL_DEVICE(nv)    ((nv)->flags & NV_FLAG_CONTROL)
 #define NV_IS_SOC_DISPLAY_DEVICE(nv)    \
         ((nv)->flags & NV_FLAG_SOC_DISPLAY)
@@ -747,7 +747,6 @@ NV_STATUS  NV_API_CALL  nv_acpi_dsm_method       (nv_state_t *, NvU8 *, NvU32, N
 NV_STATUS  NV_API_CALL  nv_acpi_ddc_method       (nv_state_t *, void *, NvU32 *);
 NV_STATUS  NV_API_CALL  nv_acpi_dod_method       (nv_state_t *, NvU32 *, NvU32 *);
 NV_STATUS  NV_API_CALL  nv_acpi_rom_method       (nv_state_t *, NvU32 *, NvU32 *);
-NvBool     NV_API_CALL  nv_acpi_upstreamport_power_resource_method_present (void *);
 
 NV_STATUS  NV_API_CALL  nv_log_error             (nv_state_t *, NvU32, const char *, va_list);
 
@@ -853,7 +852,8 @@ NV_STATUS  NV_API_CALL  rm_system_event           (nvidia_stack_t *, NvU32, NvU3
 void       NV_API_CALL  rm_disable_gpu_state_persistence    (nvidia_stack_t *sp, nv_state_t *);
 NV_STATUS  NV_API_CALL  rm_p2p_init_mapping       (nvidia_stack_t *, NvU64, NvU64 *, NvU64 *, NvU64 *, NvU64 *, NvU64, NvU64, NvU64, NvU64, void (*)(void *), void *);
 NV_STATUS  NV_API_CALL  rm_p2p_destroy_mapping    (nvidia_stack_t *, NvU64);
-NV_STATUS  NV_API_CALL  rm_p2p_get_pages          (nvidia_stack_t *, NvU64, NvU32, NvU64, NvU64, NvU64 *, NvU32 *, NvU32 *, NvU32 *, NvU8 **, void *, void (*)(void *), void *);
+NV_STATUS  NV_API_CALL  rm_p2p_get_pages          (nvidia_stack_t *, NvU64, NvU32, NvU64, NvU64, NvU64 *, NvU32 *, NvU32 *, NvU32 *, NvU8 **, void *);
+NV_STATUS  NV_API_CALL  rm_p2p_register_callback  (nvidia_stack_t *, NvU64, NvU64, NvU64, void *, void (*)(void *), void *);
 NV_STATUS  NV_API_CALL  rm_p2p_put_pages          (nvidia_stack_t *, NvU64, NvU32, NvU64, void *);
 NV_STATUS  NV_API_CALL  rm_p2p_dma_map_pages      (nvidia_stack_t *, nv_state_t *, NvU8 *, NvU32, NvU32, NvU64 *, void **);
 NV_STATUS  NV_API_CALL  rm_get_cpu_type           (nvidia_stack_t *, nv_cpu_type_t *);
@@ -861,7 +861,7 @@ NV_STATUS  NV_API_CALL  rm_log_gpu_crash          (nv_stack_t *, nv_state_t *);
 
 NV_STATUS  NV_API_CALL  rm_gpu_ops_create_session (nvidia_stack_t *, nvgpuSessionHandle_t *);
 NV_STATUS  NV_API_CALL  rm_gpu_ops_destroy_session (nvidia_stack_t *, nvgpuSessionHandle_t);
-NV_STATUS  NV_API_CALL  rm_gpu_ops_device_create (nvidia_stack_t *, nvgpuSessionHandle_t, const NvProcessorUuid *, nvgpuDeviceHandle_t *);
+NV_STATUS  NV_API_CALL  rm_gpu_ops_device_create (nvidia_stack_t *, nvgpuSessionHandle_t, const nvgpuInfo_t *, const NvProcessorUuid *, nvgpuDeviceHandle_t *);
 NV_STATUS  NV_API_CALL  rm_gpu_ops_device_destroy (nvidia_stack_t *, nvgpuDeviceHandle_t);
 NV_STATUS  NV_API_CALL  rm_gpu_ops_address_space_create(nvidia_stack_t *, nvgpuDeviceHandle_t, unsigned long long, unsigned long long, nvgpuAddressSpaceHandle_t *, nvgpuAddressSpaceInfo_t);
 NV_STATUS  NV_API_CALL  rm_gpu_ops_dup_address_space(nvidia_stack_t *, nvgpuDeviceHandle_t, NvHandle, NvHandle, nvgpuAddressSpaceHandle_t *, nvgpuAddressSpaceInfo_t);
@@ -887,7 +887,7 @@ NV_STATUS  NV_API_CALL  rm_gpu_ops_channel_destroy(nvidia_stack_t *, nvgpuChanne
 NV_STATUS  NV_API_CALL rm_gpu_ops_memory_free(nvidia_stack_t *, nvgpuAddressSpaceHandle_t, NvU64);
 NV_STATUS  NV_API_CALL rm_gpu_ops_query_caps(nvidia_stack_t *, nvgpuAddressSpaceHandle_t, nvgpuCaps_t);
 NV_STATUS  NV_API_CALL rm_gpu_ops_query_ces_caps(nvidia_stack_t *sp, nvgpuAddressSpaceHandle_t, nvgpuCesCaps_t);
-NV_STATUS  NV_API_CALL rm_gpu_ops_get_gpu_info(nvidia_stack_t *, const NvProcessorUuid *pUuid, nvgpuInfo_t);
+NV_STATUS  NV_API_CALL rm_gpu_ops_get_gpu_info(nvidia_stack_t *, const NvProcessorUuid *pUuid, const nvgpuClientInfo_t *, nvgpuInfo_t *);
 NV_STATUS  NV_API_CALL rm_gpu_ops_service_device_interrupts_rm(nvidia_stack_t *, nvgpuDeviceHandle_t);
 NV_STATUS  NV_API_CALL rm_gpu_ops_dup_allocation(nvidia_stack_t *, NvHandle, nvgpuAddressSpaceHandle_t, NvU64, nvgpuAddressSpaceHandle_t, NvU64*, NvBool);
 
@@ -936,7 +936,7 @@ void       NV_API_CALL rm_check_for_gpu_surprise_removal(nvidia_stack_t *, nv_st
 NV_STATUS  NV_API_CALL rm_set_external_kernel_client_count(nvidia_stack_t *, nv_state_t *, NvBool);
 NV_STATUS  NV_API_CALL rm_schedule_gpu_wakeup(nvidia_stack_t *, nv_state_t *);
 
-void       NV_API_CALL rm_init_dynamic_power_management(nvidia_stack_t *, nv_state_t *);
+void       NV_API_CALL rm_init_dynamic_power_management(nvidia_stack_t *, nv_state_t *, NvBool);
 void       NV_API_CALL rm_cleanup_dynamic_power_management(nvidia_stack_t *, nv_state_t *);
 NV_STATUS  NV_API_CALL rm_ref_dynamic_power(nvidia_stack_t *, nv_state_t *, nv_dynamic_power_mode_t);
 void       NV_API_CALL rm_unref_dynamic_power(nvidia_stack_t *, nv_state_t *, nv_dynamic_power_mode_t);
@@ -944,14 +944,14 @@ NV_STATUS  NV_API_CALL rm_transition_dynamic_power(nvidia_stack_t *, nv_state_t 
 void       NV_API_CALL rm_handle_display_change(nvidia_stack_t *, nv_state_t *);
 
 /* vGPU VFIO specific functions */
-NV_STATUS  NV_API_CALL  nv_vgpu_create_request(nvidia_stack_t *, nv_state_t *, NvU8 *, NvU32, NvU16 *, NvU32);
-NV_STATUS  NV_API_CALL  nv_vgpu_delete(nvidia_stack_t *, NvU8 *, NvU16);
+NV_STATUS  NV_API_CALL  nv_vgpu_create_request(nvidia_stack_t *, nv_state_t *, const NvU8 *, NvU32, NvU16 *, NvU32);
+NV_STATUS  NV_API_CALL  nv_vgpu_delete(nvidia_stack_t *, const NvU8 *, NvU16);
 NV_STATUS  NV_API_CALL  nv_vgpu_get_type_ids(nvidia_stack_t *, nv_state_t *, NvU32 *, NvU32 **);
 NV_STATUS  NV_API_CALL  nv_vgpu_get_type_info(nvidia_stack_t *, nv_state_t *, NvU32, NvU8 *, int);
-NV_STATUS  NV_API_CALL  nv_vgpu_get_bar_info(nvidia_stack_t *, nv_state_t *, NvU8 *, NvU64 *, NvU32, void *, void **);
-NV_STATUS  NV_API_CALL  nv_vgpu_start(nvidia_stack_t *, NvU8 *, void *, NvS32 *, NvU8 *, NvU32);
-NV_STATUS  NV_API_CALL  nv_vgpu_get_sparse_mmap(nvidia_stack_t *, nv_state_t *, NvU8 *, NvU64 **, NvU64 **, NvU32 *);
-NV_STATUS  NV_API_CALL  nv_vgpu_update_request(nvidia_stack_t *, NvU8 *, NvU32, NvU64 *, NvU64 *, NvU8 *);
+NV_STATUS  NV_API_CALL  nv_vgpu_get_bar_info(nvidia_stack_t *, nv_state_t *, const NvU8 *, NvU64 *, NvU32, void *, void **);
+NV_STATUS  NV_API_CALL  nv_vgpu_start(nvidia_stack_t *, const NvU8 *, void *, NvS32 *, NvU8 *, NvU32);
+NV_STATUS  NV_API_CALL  nv_vgpu_get_sparse_mmap(nvidia_stack_t *, nv_state_t *, const NvU8 *, NvU64 **, NvU64 **, NvU32 *);
+NV_STATUS  NV_API_CALL  nv_vgpu_update_request(nvidia_stack_t *, const NvU8 *, NvU32, NvU64 *, NvU64 *, NvU8 *);
 NV_STATUS  NV_API_CALL  nv_gpu_bind_event(nvidia_stack_t *);
 
 NV_STATUS NV_API_CALL nv_get_usermap_access_params(nv_state_t*, nv_usermap_access_params_t*);

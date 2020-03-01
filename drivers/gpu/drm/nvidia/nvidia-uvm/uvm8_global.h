@@ -165,6 +165,15 @@ static uvm_gpu_t *uvm_gpu_get_by_processor_id(uvm_processor_id_t id)
     return gpu;
 }
 
+static uvmGpuSessionHandle uvm_gpu_session_handle(uvm_gpu_t *gpu)
+{
+
+
+
+
+    return g_uvm_global.rm_session_handle;
+}
+
 // Use these READ_ONCE()/WRITE_ONCE() wrappers when accessing GPU resources
 // in BAR0/BAR1 to detect cases in which GPUs are accessed when UVM is
 // suspended.

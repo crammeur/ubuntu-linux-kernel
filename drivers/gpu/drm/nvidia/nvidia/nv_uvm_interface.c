@@ -203,6 +203,7 @@ NV_STATUS nvUvmInterfaceSessionDestroy(uvmGpuSessionHandle session)
 EXPORT_SYMBOL(nvUvmInterfaceSessionDestroy);
 
 NV_STATUS nvUvmInterfaceDeviceCreate(uvmGpuSessionHandle session,
+                                     const UvmGpuInfo *pGpuInfo,
                                      const NvProcessorUuid *gpuUuid,
                                      uvmGpuDeviceHandle *device)
 {
@@ -216,6 +217,7 @@ NV_STATUS nvUvmInterfaceDeviceCreate(uvmGpuSessionHandle session,
 
     status = rm_gpu_ops_device_create(sp,
                                       (gpuSessionHandle)session,
+                                      (const gpuInfo *)pGpuInfo,
                                       gpuUuid,
                                       (gpuDeviceHandle *)device);
 
@@ -607,7 +609,9 @@ NV_STATUS nvUvmInterfaceQueryCopyEnginesCaps(uvmGpuAddressSpaceHandle vaSpace,
 }
 EXPORT_SYMBOL(nvUvmInterfaceQueryCopyEnginesCaps);
 
-NV_STATUS nvUvmInterfaceGetGpuInfo(const NvProcessorUuid *gpuUuid, UvmGpuInfo *pGpuInfo)
+NV_STATUS nvUvmInterfaceGetGpuInfo(const NvProcessorUuid *gpuUuid,
+                                   const UvmGpuClientInfo *pGpuClientInfo,
+                                   UvmGpuInfo *pGpuInfo)
 {
     nvidia_stack_t *sp = NULL;
     NV_STATUS status;
@@ -617,7 +621,7 @@ NV_STATUS nvUvmInterfaceGetGpuInfo(const NvProcessorUuid *gpuUuid, UvmGpuInfo *p
         return NV_ERR_NO_MEMORY;
     }
 
-    status = rm_gpu_ops_get_gpu_info(sp, gpuUuid, pGpuInfo);
+    status = rm_gpu_ops_get_gpu_info(sp, gpuUuid, pGpuClientInfo, pGpuInfo);
 
     nv_kmem_cache_free_stack(sp);
     return status;

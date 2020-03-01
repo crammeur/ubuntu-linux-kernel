@@ -55,12 +55,24 @@ NvU32 uvm_hal_volta_fault_buffer_read_get(uvm_gpu_t *gpu)
 
 void uvm_hal_volta_fault_buffer_write_get(uvm_gpu_t *gpu, NvU32 index)
 {
-    // Clear the getptr_corrupted/overflow bits when writing GET
-    NvU32 get = HWVALUE(_PFB_PRI_MMU, FAULT_BUFFER_GET, PTR, index) |
-                HWCONST(_PFB_PRI_MMU, FAULT_BUFFER_GET, GETPTR_CORRUPTED, CLEAR) |
-                HWCONST(_PFB_PRI_MMU, FAULT_BUFFER_GET, OVERFLOW, CLEAR);
+    NvU32 get = HWVALUE(_PFB_PRI_MMU, FAULT_BUFFER_GET, PTR, index);
     UVM_ASSERT(index < gpu->fault_buffer_info.replayable.max_faults);
 
+    // If HW has detected an overflow condition (PUT == GET - 1 and a fault has
+    // arrived, which is dropped due to no more space in the fault buffer), it will
+    // not deliver any more faults into the buffer until the overflow condition has
+    // been cleared. The overflow condition is cleared by updating the GET index to
+    // indicate space in the buffer and writing 1 to the OVERFLOW bit in GET.
+    // Unfortunately, this can not be done in the same write because it can collide
+    // with an arriving fault on the same cycle, resulting in the overflow condition
+    // being instantly reasserted.
+    // However, if the index is updated first and then the OVERFLOW bit is cleared
+    // such a collision will not cause a reassertion of the overflow condition.
+    UVM_GPU_WRITE_ONCE(*gpu->fault_buffer_info.rm_info.replayable.pFaultBufferGet, get);
+
+    // Clear the getptr_corrupted/overflow bits.
+    get |= HWCONST(_PFB_PRI_MMU, FAULT_BUFFER_GET, GETPTR_CORRUPTED, CLEAR) |
+           HWCONST(_PFB_PRI_MMU, FAULT_BUFFER_GET, OVERFLOW, CLEAR);
     UVM_GPU_WRITE_ONCE(*gpu->fault_buffer_info.rm_info.replayable.pFaultBufferGet, get);
 }
 

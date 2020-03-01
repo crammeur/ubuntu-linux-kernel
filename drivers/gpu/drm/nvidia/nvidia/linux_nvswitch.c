@@ -101,28 +101,17 @@ nvswitch_map_status
 static int nvswitch_probe(struct pci_dev *, const struct pci_device_id *);
 static void nvswitch_remove(struct pci_dev *);
 
-static struct pci_device_id nvswitch_pci_table[] = {
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10_INT))},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x0)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x1)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x2)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x3)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x4)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x5)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x6)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x7)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x8)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0x9)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0xA)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0xB)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0xC)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0xD)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0xE)},
-    {PCI_DEVICE(PCI_VENDOR_ID_NVIDIA, DEVICE_BASE(PCI_DEVICE_ID_SV10)+0xF)},
-
-
-
-    { }
+static struct pci_device_id nvswitch_pci_table[] =
+{
+    {
+        .vendor      = PCI_VENDOR_ID_NVIDIA,
+        .device      = PCI_ANY_ID,
+        .subvendor   = PCI_ANY_ID,
+        .subdevice   = PCI_ANY_ID,
+        .class       = (PCI_CLASS_BRIDGE_OTHER << 8),
+        .class_mask  = ~0
+    },
+    {}
 };
 
 static struct pci_driver nvswitch_pci_driver =
@@ -605,18 +594,14 @@ nvswitch_device_open
     if (!nvswitch_dev)
     {
         rc = -ENODEV;
-        goto find_device_failed;
+        goto done;
     }
 
     NV_ATOMIC_INC(nvswitch_dev->ref_count);
 
     file->private_data = nvswitch_dev;
 
-    mutex_unlock(&nvswitch.driver_mutex);
-
-    return 0;
-
-find_device_failed:
+done:
     mutex_unlock(&nvswitch.driver_mutex);
 
     return rc;
@@ -1153,6 +1138,11 @@ nvswitch_probe
     NVSWITCH_DEV *nvswitch_dev = NULL;
     int rc = 0;
     int minor;
+
+    if (!nvswitch_lib_validate_device_id(pci_dev->device))
+    {
+        return -EINVAL;
+    }
 
     printk(KERN_INFO "nvidia-nvswitch: Probing device %04x:%02x:%02x.%x, "
            "Vendor Id = 0x%x, Device Id = 0x%x, Class = 0x%x \n",

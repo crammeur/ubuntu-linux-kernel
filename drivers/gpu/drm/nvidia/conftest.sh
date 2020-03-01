@@ -22,11 +22,10 @@ if [ "$ARCH" = "i386" -o "$ARCH" = "x86_64" ]; then
     fi
 fi
 
-HEADERS_ARCH="$SOURCES/arch/$KERNEL_ARCH/include"
-
 # VGX_BUILD parameter defined only for VGX builds (vGPU Host driver)
 # VGX_KVM_BUILD parameter defined only vGPU builds on KVM hypervisor
 # GRID_BUILD parameter defined only for GRID builds (GRID Guest driver)
+# GRID_BUILD_CSP parameter defined only for GRID CSP builds (GRID Guest driver for CSPs)
 
 test_xen() {
     #
@@ -56,10 +55,9 @@ append_conftest() {
     done
 }
 
-translate_and_find_header_files() {
+translate_and_preprocess_header_files() {
     # Inputs:
-    #   $1: a parent directory (full path), in which to search
-    #   $2: a list of relative file paths
+    #   $1: list of relative file paths
     #
     # This routine creates an upper case, underscore version of each of the
     # relative file paths, and uses that as the token to either define or
@@ -67,15 +65,32 @@ translate_and_find_header_files() {
     # NV_LINUX_FENCE_H_PRESENT, and that is either defined or undefined, in the
     # output (which goes to stdout, just like the rest of this file).
 
-    local parent_dir=$1
-    shift
+    # -MG or -MD can interfere with the use of -M and -M -MG for testing file
+    # existence; filter out any occurrences from CFLAGS. CFLAGS is intentionally
+    # wrapped with whitespace in the input to sed(1) so the regex can match zero
+    # or more occurrences of "-MD" or "-MG", surrounded by whitespace to avoid
+    # accidental matches with tokens that happen to contain either of those
+    # strings, without special handling of the beginning or the end of the line.
+    TEST_CFLAGS=`echo "-E -M $CFLAGS " | sed -e 's/\( -M[DG]\)* / /g'`
 
     for file in $@; do
         local file_define=NV_`echo $file | tr '/.' '_' | tr '-' '_' | tr 'a-z' 'A-Z'`_PRESENT
-        if [ -f $parent_dir/$file -o -f $OUTPUT/include/$file ]; then
+
+        CODE="#include <$file>"
+
+        if echo "$CODE" | $CC $TEST_CFLAGS - > /dev/null 2>&1; then
             echo "#define $file_define"
         else
-            echo "#undef $file_define"
+            # If preprocessing failed, it could have been because the header
+            # file under test is not present, or because it is present but
+            # depends upon the inclusion of other header files. Attempting
+            # preprocessing again with -MG will ignore a missing header file
+            # but will still fail if the header file is present.
+            if echo "$CODE" | $CC $TEST_CFLAGS -MG - > /dev/null 2>&1; then
+                echo "#undef $file_define"
+            else
+                echo "#define $file_define"
+            fi
         fi
     done
 }
@@ -98,6 +113,7 @@ test_headers() {
     FILES="$FILES drm/drm_framebuffer.h"
     FILES="$FILES drm/drm_connector.h"
     FILES="$FILES drm/drm_probe_helper.h"
+    FILES="$FILES drm/drm_blend.h"
     FILES="$FILES generated/autoconf.h"
     FILES="$FILES generated/compile.h"
     FILES="$FILES generated/utsrelease.h"
@@ -118,16 +134,15 @@ test_headers() {
     FILES="$FILES linux/fence.h"
     FILES="$FILES soc/tegra/chip-id.h"
     FILES="$FILES video/nv_internal.h"
+    FILES="$FILES asm/book3s/64/hash-64k.h"
+    FILES="$FILES asm/set_memory.h"
+    FILES="$FILES asm/prom.h"
+    FILES="$FILES asm/powernv.h"
+    FILES="$FILES asm/tlbflush.h"
+    FILES="$FILES linux/atomic.h"
+    FILES="$FILES asm/barrier.h"
 
-    # Arch specific headers which need testing
-    FILES_ARCH="asm/book3s/64/hash-64k.h"
-    FILES_ARCH="$FILES_ARCH asm/set_memory.h"
-    FILES_ARCH="$FILES_ARCH asm/prom.h"
-    FILES_ARCH="$FILES_ARCH asm/powernv.h"
-    FILES_ARCH="$FILES_ARCH asm/tlbflush.h"
-
-    translate_and_find_header_files $HEADERS      $FILES
-    translate_and_find_header_files $HEADERS_ARCH $FILES_ARCH
+    translate_and_preprocess_header_files $FILES
 }
 
 build_cflags() {
@@ -195,6 +210,23 @@ build_cflags() {
 
     if [ -n "$BUILD_PARAMS" ]; then
         CFLAGS="$CFLAGS -D$BUILD_PARAMS"
+    fi
+
+    # Check if gcc supports asm goto and set CC_HAVE_ASM_GOTO if it does.
+    # Older kernels perform this check and set this flag in Kbuild, and since
+    # conftest.sh runs outside of Kbuild it ends up building without this flag.
+    # Starting with commit e9666d10a5677a494260d60d1fa0b73cc7646eb3 this test
+    # is done within Kconfig, and the preprocessor flag is no longer needed.
+
+    GCC_GOTO_SH="$SOURCES/build/gcc-goto.sh"
+
+    if [ -f "$GCC_GOTO_SH" ]; then
+        # Newer versions of gcc-goto.sh don't print anything on success, but
+        # this is okay, since it's no longer necessary to set CC_HAVE_ASM_GOTO
+        # based on the output of those versions of gcc-goto.sh.
+        if [ `/bin/sh "$GCC_GOTO_SH" "$CC"` = "y" ]; then
+            CFLAGS="$CFLAGS -DCC_HAVE_ASM_GOTO"
+        fi
     fi
 }
 
@@ -437,6 +469,25 @@ compile_test() {
             compile_check_conftest "$CODE" "NV_SET_MEMORY_ARRAY_UC_PRESENT" "" "functions"
         ;;
 
+        sysfs_slab_unlink)
+            #
+            # Determine if the sysfs_slab_unlink() function is present.
+            #
+            # This test is useful to check for the presence a fix for the deferred
+            # kmem_cache destroy feature (see nvbug: 2543505).
+            #
+            # Added by commit d50d82faa0c9 ("slub: fix failure when we delete and
+            # create a slab cache") in 4.18 (2018-06-27).
+            #
+            CODE="
+            #include <linux/slab.h>
+            void conftest_sysfs_slab_unlink(void) {
+                sysfs_slab_unlink();
+            }"
+
+            compile_check_conftest "$CODE" "NV_SYSFS_SLAB_UNLINK_PRESENT" "" "functions"
+        ;;
+
         list_is_first)
             #
             # Determine if the list_is_first() function is present.
@@ -485,6 +536,22 @@ compile_test() {
             }"
 
             compile_check_conftest "$CODE" "NV_OUTER_FLUSH_ALL_PRESENT" "" "types"
+        ;;
+
+        flush_cache_all)
+            #
+            # Determine if flush_cache_all() function is present
+            #
+            # flush_cache_all() was removed by commit id
+            # 68234df4ea79 ("arm64: kill flush_cache_all()") in 4.2 (2015-04-20)
+            # for aarch64
+            #
+            CODE="
+            #include <asm/cacheflush.h>
+            int conftest_flush_cache_all(void) {
+                return flush_cache_all();
+            }"
+            compile_check_conftest "$CODE" "NV_FLUSH_CACHE_ALL_PRESENT" "" "functions"
         ;;
 
         pci_get_domain_bus_and_slot)
@@ -880,6 +947,15 @@ compile_test() {
             return
         ;;
 
+        nvidia_grid_csp_build)
+            if [ -n "$GRID_BUILD_CSP" ]; then
+                echo "#define NV_GRID_BUILD_CSP $GRID_BUILD_CSP" | append_conftest "generic"
+            else
+                echo "#undef NV_GRID_BUILD_CSP" | append_conftest "generic"
+            fi
+            return
+        ;;
+
         vm_fault_has_address)
             #
             # Determine if the 'vm_fault' structure has an 'address', or a
@@ -902,6 +978,27 @@ compile_test() {
             compile_check_conftest "$CODE" "NV_VM_FAULT_HAS_ADDRESS" "" "types"
         ;;
 
+    kmem_cache_has_kobj_remove_work)
+            #
+            # Determine if the 'kmem_cache' structure has 'kobj_remove_work'.
+            #
+            # 'kobj_remove_work' was added by commit 3b7b314053d02 ("slub: make
+            # sysfs file removal asynchronous") in v4.12 (2017-06-23). This
+            # commit introduced a race between kmem_cache destroy and create
+            # which we need to workaround in our driver (see nvbug: 2543505).
+            # Also see comment for sysfs_slab_unlink conftest.
+            #
+            CODE="
+            #include <linux/mm.h>
+            #include <linux/slab.h>
+            #include <linux/slub_def.h>
+            int conftest_kmem_cache_has_kobj_remove_work(void) {
+                return offsetof(struct kmem_cache, kobj_remove_work);
+            }"
+
+            compile_check_conftest "$CODE" "NV_KMEM_CACHE_HAS_KOBJ_REMOVE_WORK" "" "types"
+        ;;
+
         mdev_uuid)
             #
             # Determine if mdev_uuid() function is present or not
@@ -917,6 +1014,22 @@ compile_test() {
             }"
 
             compile_check_conftest "$CODE" "NV_MDEV_UUID_PRESENT" "" "functions"
+
+            #
+            # Determine if mdev_uuid() returns 'const guid_t *'.
+            #
+            # mdev_uuid() function prototype updated to return 'const guid_t *'
+            # by commit 278bca7f318e ("vfio-mdev: Switch to use new generic UUID
+            # API") in v5.1 (2019-01-10).
+            #
+            CODE="
+            #include <linux/pci.h>
+            #include <linux/mdev.h>
+            const guid_t *conftest_mdev_uuid_return_guid_ptr(struct mdev_device *mdev) {
+                return mdev_uuid(mdev);
+            }"
+
+            compile_check_conftest "$CODE" "NV_MDEV_UUID_RETURN_GUID_PTR" "" "types"
         ;;
 
         mdev_dev)
@@ -984,6 +1097,23 @@ compile_test() {
             }"
 
             compile_check_conftest "$CODE" "NV_MDEV_FROM_DEV_PRESENT" "" "functions"
+        ;;
+
+        mdev_set_iommu_device)
+            #
+            # Determine if mdev_set_iommu_device() function is present or not.
+            #
+            # Added by commit 8ac13175cbe9 ("vfio/mdev: Add iommu related member
+            # in mdev_device) in v5.1 (2019-04-12)
+            #
+            CODE="
+            #include <linux/pci.h>
+            #include <linux/mdev.h>
+            void conftest_mdev_set_iommu_device() {
+                mdev_set_iommu_device();
+            }"
+
+            compile_check_conftest "$CODE" "NV_MDEV_SET_IOMMU_DEVICE_PRESENT" "" "functions"
         ;;
 
         vfio_device_gfx_plane_info)
@@ -2890,6 +3020,20 @@ compile_test() {
             compile_check_conftest "$CODE" "NV_NODE_STATES_N_MEMORY_PRESENT" "" "types"
         ;;
 
+        vm_fault_t)
+            #
+            # Determine if vm_fault_t is present
+            #
+            # Added by commit 1c8f422059ae5da07db7406ab916203f9417e396 ("mm:
+            # change return type to vm_fault_t") in v4.17 (2018-04-05)
+            #
+            CODE="
+            #include <linux/mm.h>
+            vm_fault_t conftest_vm_fault_t;
+            "
+            compile_check_conftest "$CODE" "NV_VM_FAULT_T_IS_PRESENT" "" "types"
+        ;;
+
         vmf_insert_pfn)
             #
             # Determine if the function vmf_insert_pfn() is
@@ -3208,6 +3352,59 @@ compile_test() {
             compile_check_conftest "$CODE" "NV_TEGRA_GET_PLATFORM_PRESENT" "" "functions"
         ;;
 
+        drm_alpha_blending_available)
+            #
+            # Determine if the DRM subsystem supports alpha blending
+            #
+            # This conftest using "generic" rather than "functions" because
+            # with the logic of "functions" the presence of
+            # *either*_alpha_property or _blend_mode_property would be enough
+            # to cause NV_DRM_ALPHA_BLENDING_AVAILABLE to be defined.
+            #
+            CODE="
+            #if defined(NV_DRM_DRM_BLEND_H_PRESENT)
+            #include <drm/drm_blend.h>
+            #endif
+            void conftest_drm_alpha_blending_available(void) {
+                /* 2018-04-11 ae0e28265e216dad11d4cbde42fc15e92919af78 */
+                (void)drm_plane_create_alpha_property;
+
+                /* 2018-08-23 a5ec8332d4280500544e316f76c04a7adc02ce03 */
+                (void)drm_plane_create_blend_mode_property;
+            }"
+
+            compile_check_conftest "$CODE" "NV_DRM_ALPHA_BLENDING_AVAILABLE" "" "generic"
+        ;;
+
+        drm_driver_prime_flag_present)
+            #
+            # Determine whether driver feature flag DRIVER_PRIME is present.
+            #
+            # The DRIVER_PRIME flag was added by commit 3248877ea179 (drm:
+            # base prime/dma-buf support (v5)) in v3.4 (2011-11-25) and is
+            # removed by commit 0424fdaf883a (drm/prime: Actually remove
+            # DRIVER_PRIME everywhere) on 2019-06-17.
+            #
+            # DRIVER_PRIME definition moved from drmP.h to drm_drv.h by
+            # commit 85e634bce01a (drm: Extract drm_drv.h) in v4.10
+            # (2016-11-14).
+            #
+            # DRIVER_PRIME define is changed to enum value by commit
+            # 0e2a933b02c9 (drm: Switch DRIVER_ flags to an enum) in v5.1
+            # (2019-01-29).
+            #
+            CODE="
+            #include <drm/drmP.h>
+            #if defined(NV_DRM_DRM_DRV_H_PRESENT)
+            #include <drm/drm_drv.h>
+            #endif
+            unsigned int drm_driver_prime_flag_present_conftest(void) {
+                return DRIVER_PRIME;
+            }"
+
+            compile_check_conftest "$CODE" "NV_DRM_DRIVER_PRIME_FLAG_PRESENT" "" "types"
+        ;;
+
         # When adding a new conftest entry, please use the correct format for
         # specifying the relevant upstream Linux kernel commit.
         #
@@ -3456,6 +3653,10 @@ case "$5" in
 
         for i in $*; do compile_test $i; done
 
+        for file in conftest*.d; do
+            rm -f $file > /dev/null 2>&1
+        done
+
         exit 0
     ;;
 
@@ -3557,7 +3758,14 @@ case "$5" in
         # Check for the availability of certain kernel headers
         #
 
+        CFLAGS=$6
+
         test_headers
+
+        for file in conftest*.d; do
+            rm -f $file > /dev/null 2>&1
+        done
+
         exit $?
     ;;
 
@@ -3585,7 +3793,7 @@ case "$5" in
         TAB='	'
 
         if [ -f "$OUTPUT/Module.symvers" ] && \
-             grep -e "^[^${TAB}]*${TAB}[^${TAB}]*${TAB}vmlinux" \
+             grep -e "^[^${TAB}]*${TAB}[^${TAB}]*${TAB}\+vmlinux" \
                      "$OUTPUT/Module.symvers" >/dev/null 2>&1; then
             exit 0
         fi
