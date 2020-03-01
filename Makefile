@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 5
-PATCHLEVEL = 0
-SUBLEVEL = 1
+PATCHLEVEL = 1
+SUBLEVEL = 2
 EXTRAVERSION = -rc8
 NAME = Marc-Antoine Bergeron
 
